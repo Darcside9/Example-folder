@@ -1,0 +1,47 @@
+export const services = [
+  {
+    id: 'buy',
+    badge: 'Instant Activation',
+    title: 'One-Time SMS Verification',
+    description: 'Purchase disposable, carrier-grade phone numbers for one-time OTP and activation codes.',
+    items: [
+      'Genuine non-VoIP carrier SIM numbers',
+      'Instant code reception within 5 seconds',
+      'Zero personal data or identity verification required',
+      'Automated refund if code is not delivered',
+    ],
+    href: '#pricing',
+    cta: 'View Number Pricing →',
+    popular: true,
+  },
+  {
+    id: 'rent',
+    badge: 'Developer & Business',
+    title: 'Long-Term Dedicated Numbers',
+    description: 'Rent private, dedicated numbers for days, weeks, or months with unlimited inbound SMS.',
+    items: [
+      'Exclusive dedicated SIM routing',
+      'Renewable anytime with uninterrupted service',
+      'Full API webhook support for incoming texts',
+      'Ideal for testing, QA, and multi-step verifications',
+    ],
+    href: '#pricing',
+    cta: 'Explore Rental Plans →',
+    popular: false,
+  },
+  {
+    id: 'api',
+    badge: 'Enterprise & Wholesale',
+    title: 'High-Volume API & Wholesale',
+    description: 'Scale automated verification pipelines with sub-second latency and custom endpoints.',
+    items: [
+      'Sub-200ms REST API response times',
+      'Volume tiered pricing discounts up to 60%',
+      'Custom webhook callbacks & real-time sockets',
+      '99.99% uptime guarantee with SLA backed support',
+    ],
+    href: '#api',
+    cta: 'Explore API Docs →',
+    popular: false,
+  },
+];

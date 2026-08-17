@@ -1,8 +1,20 @@
 {
-  "name": "mtelsms-demo",
+  "name": "chris-shopper-platform",
+  "version": "1.0.0",
   "private": true,
-  "version": "0.0.1",
+  "description": "Chris Shopper — Instant SMS verification and non-VoIP temporary carrier phone numbers platform built with React and Vite.",
+  "homepage": "https://github.com/Darcside9/Example-folder#readme",
+  "bugs": {
+    "url": "https://github.com/Darcside9/Example-folder/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Darcside9/Example-folder.git"
+  },
+  "license": "ISC",
+  "author": "",
   "type": "module",
+  "main": "vite.config.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

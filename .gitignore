@@ -1,4 +1,57 @@
+# Dependencies
 node_modules/
+.pnp
+.pnp.js
+
+# Production & Build outputs
 dist/
-.vite/
+dist-ssr/
+build/
+*.local
+
+# Environment variables & secrets
 .env
+.env.*
+!.env.example
+*.pem
+
+# Vite & Bundler cache
+.vite/
+.cache/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Editor & IDE settings
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System files
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Testing & Coverage
+coverage/
+.nyc_output/
+playwright-report/
+test-results/
+
+# Temporary / Scratch files
+tmp/
+temp/
+scratch/
+*.tmp
