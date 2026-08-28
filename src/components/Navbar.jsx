@@ -14,7 +14,10 @@ export default function Navbar({ onOpenOrderModal }) {
 
   const languages = ['EN', 'ES', 'FR', 'DE', 'PT', 'RU', 'ZH'];
 
-  const closeMenu = () => setMobileMenuOpen(false);
+  const closeMenu = () => {
+    setMobileMenuOpen(false);
+    setUserDropdownOpen(false);
+  };
 
   return (
     <header className="site-header">
@@ -31,6 +34,7 @@ export default function Navbar({ onOpenOrderModal }) {
           <span className="brand-text">Chris <span className="brand-highlight">Shopper</span></span>
         </Link>
 
+        {/* Primary Navigation & Mobile Menu */}
         <nav className={`site-nav ${mobileMenuOpen ? 'mobile-open' : ''}`} aria-label="Primary navigation">
           <Link 
             to="/" 
@@ -79,6 +83,7 @@ export default function Navbar({ onOpenOrderModal }) {
             💬 WhatsApp Support
           </a>
 
+          {/* Mobile Drawer Auth Actions */}
           <div className="mobile-nav-actions">
             {currentUser ? (
               <div className="mobile-user-box">
@@ -89,7 +94,7 @@ export default function Navbar({ onOpenOrderModal }) {
                 <div className="mobile-nav-links-grid">
                   <Link 
                     to="/dashboard" 
-                    className="btn btn-secondary btn-sm"
+                    className="btn btn-secondary btn-sm btn-full"
                     onClick={closeMenu}
                   >
                     📊 My Dashboard
@@ -97,7 +102,7 @@ export default function Navbar({ onOpenOrderModal }) {
                   {isAdmin && (
                     <Link 
                       to="/admin" 
-                      className="btn btn-secondary btn-sm"
+                      className="btn btn-secondary btn-sm btn-full"
                       onClick={closeMenu}
                     >
                       👑 Admin Panel
@@ -112,7 +117,7 @@ export default function Navbar({ onOpenOrderModal }) {
                     logout();
                   }}
                 >
-                  Sign Out
+                  🚪 Sign Out
                 </button>
               </div>
             ) : (
@@ -129,13 +134,14 @@ export default function Navbar({ onOpenOrderModal }) {
                   className="btn btn-primary btn-sm"
                   onClick={closeMenu}
                 >
-                  Sign Up
+                  Create Account
                 </Link>
               </div>
             )}
           </div>
         </nav>
 
+        {/* Header Right Actions */}
         <div className="header-actions">
           {/* Language Selector */}
           <div className="lang-selector-wrapper">
@@ -176,6 +182,7 @@ export default function Navbar({ onOpenOrderModal }) {
                 type="button" 
                 className="user-pill-btn"
                 onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+                aria-label="User Account Menu"
               >
                 <span className="user-avatar-circle">
                   {(currentUser.email || 'U').charAt(0).toUpperCase()}
@@ -190,7 +197,7 @@ export default function Navbar({ onOpenOrderModal }) {
                 <div className="user-dropdown-menu">
                   <div className="user-dropdown-header">
                     <span className="user-dropdown-email">{currentUser.email}</span>
-                    <span className="user-dropdown-status">🟢 Verified User</span>
+                    <span className="user-dropdown-status">🟢 Verified User • ${Number(currentUser.balance || 0).toFixed(2)}</span>
                   </div>
 
                   <Link
@@ -216,7 +223,7 @@ export default function Navbar({ onOpenOrderModal }) {
                     className="user-dropdown-item"
                     onClick={() => {
                       setUserDropdownOpen(false);
-                      onOpenOrderModal();
+                      if (onOpenOrderModal) onOpenOrderModal();
                     }}
                   >
                     ⚡ Buy Number
@@ -246,20 +253,32 @@ export default function Navbar({ onOpenOrderModal }) {
               )}
             </div>
           ) : (
-            <div className="desktop-auth-actions">
+            <>
+              {/* Desktop Auth Buttons */}
+              <div className="desktop-auth-actions">
+                <Link 
+                  to="/auth?mode=login" 
+                  className="btn btn-ghost btn-auth-login"
+                >
+                  Login
+                </Link>
+                <Link 
+                  to="/auth?mode=signup" 
+                  className="btn btn-primary btn-sm btn-auth-signup"
+                >
+                  Sign Up
+                </Link>
+              </div>
+
+              {/* Mobile Quick Sign In Button (Visible on mobile top bar) */}
               <Link 
                 to="/auth?mode=login" 
-                className="btn btn-ghost btn-auth-login"
+                className="mobile-header-signin-btn"
+                aria-label="Sign In"
               >
-                Login
+                Sign In
               </Link>
-              <Link 
-                to="/auth?mode=signup" 
-                className="btn btn-primary btn-sm btn-auth-signup"
-              >
-                Sign Up
-              </Link>
-            </div>
+            </>
           )}
 
           {/* Mobile Hamburger Toggle */}

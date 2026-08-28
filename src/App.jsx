@@ -33,6 +33,11 @@ export default function App() {
   };
 
   const handleOpenOrderModal = (plan = null) => {
+    if (!currentUser) {
+      navigate('/auth?mode=signup');
+      showToast('Please create an account or sign in to buy numbers.');
+      return;
+    }
     setSelectedPlan(plan);
     setIsModalOpen(true);
   };
