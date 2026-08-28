@@ -1,16 +1,25 @@
 import { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
+import { siteConfig } from '../data/siteConfig';
+import { useAuth } from '../lib/AuthContext';
 
 export default function Navbar({ onOpenOrderModal }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [lang, setLang] = useState('EN');
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+  const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  
+  const { currentUser, logout, isAdmin } = useAuth();
+  const location = useLocation();
 
   const languages = ['EN', 'ES', 'FR', 'DE', 'PT', 'RU', 'ZH'];
+
+  const closeMenu = () => setMobileMenuOpen(false);
 
   return (
     <header className="site-header">
       <div className="header-container">
-        <a href="#" className="brand" aria-label="Chris Shopper Home">
+        <Link to="/" className="brand" onClick={closeMenu} aria-label="Chris Shopper Home">
           <span className="brand-badge">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
@@ -20,31 +29,115 @@ export default function Navbar({ onOpenOrderModal }) {
             </svg>
           </span>
           <span className="brand-text">Chris <span className="brand-highlight">Shopper</span></span>
-        </a>
+        </Link>
 
         <nav className={`site-nav ${mobileMenuOpen ? 'mobile-open' : ''}`} aria-label="Primary navigation">
-          <a href="#services" onClick={() => setMobileMenuOpen(false)}>Services</a>
-          <a href="#how-it-works" onClick={() => setMobileMenuOpen(false)}>How It Works</a>
-          <a href="#pricing" onClick={() => setMobileMenuOpen(false)}>Pricing</a>
-          <a href="#api" onClick={() => setMobileMenuOpen(false)}>API Docs</a>
-          <a href="#support" onClick={() => setMobileMenuOpen(false)}>Support</a>
-          <a href="#faq" onClick={() => setMobileMenuOpen(false)}>FAQ</a>
+          <Link 
+            to="/" 
+            onClick={closeMenu}
+            className={location.pathname === '/' ? 'active-link' : ''}
+          >
+            Home
+          </Link>
+
+          {currentUser && (
+            <>
+              <Link 
+                to="/dashboard" 
+                onClick={closeMenu}
+                className={location.pathname === '/dashboard' ? 'active-link' : ''}
+              >
+                📊 Dashboard
+              </Link>
+              {isAdmin && (
+                <Link 
+                  to="/admin" 
+                  onClick={closeMenu}
+                  className={location.pathname === '/admin' ? 'active-link text-cyan' : 'text-cyan'}
+                >
+                  👑 Admin Panel
+                </Link>
+              )}
+            </>
+          )}
+
+          {location.pathname === '/' ? (
+            <>
+              <a href="#services" onClick={closeMenu}>Services</a>
+              <a href="#pricing" onClick={closeMenu}>Pricing</a>
+              <a href="#api" onClick={closeMenu}>API Docs</a>
+            </>
+          ) : (
+            <>
+              <Link to="/" onClick={closeMenu}>Services</Link>
+              <Link to="/" onClick={closeMenu}>Pricing</Link>
+              <Link to="/" onClick={closeMenu}>API Docs</Link>
+            </>
+          )}
+
+          <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer" onClick={closeMenu}>
+            💬 WhatsApp Support
+          </a>
 
           <div className="mobile-nav-actions">
-            <button 
-              type="button" 
-              className="btn btn-primary btn-sm"
-              onClick={() => {
-                setMobileMenuOpen(false);
-                if (onOpenOrderModal) onOpenOrderModal();
-              }}
-            >
-              Get Number
-            </button>
+            {currentUser ? (
+              <div className="mobile-user-box">
+                <div className="mobile-user-info">
+                  <span className="user-email-label">{currentUser.email}</span>
+                  <span className="user-balance-badge">${Number(currentUser.balance || 0).toFixed(2)}</span>
+                </div>
+                <div className="mobile-nav-links-grid">
+                  <Link 
+                    to="/dashboard" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={closeMenu}
+                  >
+                    📊 My Dashboard
+                  </Link>
+                  {isAdmin && (
+                    <Link 
+                      to="/admin" 
+                      className="btn btn-secondary btn-sm"
+                      onClick={closeMenu}
+                    >
+                      👑 Admin Panel
+                    </Link>
+                  )}
+                </div>
+                <button 
+                  type="button" 
+                  className="btn btn-ghost btn-sm btn-full text-danger"
+                  onClick={() => {
+                    closeMenu();
+                    logout();
+                  }}
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <div className="mobile-auth-btn-grid">
+                <Link 
+                  to="/auth?mode=login" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={closeMenu}
+                >
+                  Sign In
+                </Link>
+                <Link 
+                  to="/auth?mode=signup" 
+                  className="btn btn-primary btn-sm"
+                  onClick={closeMenu}
+                >
+                  Sign Up
+                </Link>
+              </div>
+            )}
           </div>
         </nav>
 
         <div className="header-actions">
+          {/* Language Selector */}
           <div className="lang-selector-wrapper">
             <button
               className="lang-btn"
@@ -76,15 +169,100 @@ export default function Navbar({ onOpenOrderModal }) {
             )}
           </div>
 
-          <a href="#api" className="btn btn-ghost">Developer API</a>
-          <button 
-            type="button" 
-            className="btn btn-primary btn-header"
-            onClick={onOpenOrderModal}
-          >
-            Buy Number
-          </button>
+          {/* User Logged In State or Auth Buttons */}
+          {currentUser ? (
+            <div className="user-session-wrapper">
+              <button 
+                type="button" 
+                className="user-pill-btn"
+                onClick={() => setUserDropdownOpen(!userDropdownOpen)}
+              >
+                <span className="user-avatar-circle">
+                  {(currentUser.email || 'U').charAt(0).toUpperCase()}
+                </span>
+                <span className="user-balance-pill">${Number(currentUser.balance || 0).toFixed(2)}</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
 
+              {userDropdownOpen && (
+                <div className="user-dropdown-menu">
+                  <div className="user-dropdown-header">
+                    <span className="user-dropdown-email">{currentUser.email}</span>
+                    <span className="user-dropdown-status">🟢 Verified User</span>
+                  </div>
+
+                  <Link
+                    to="/dashboard"
+                    className="user-dropdown-item"
+                    onClick={() => setUserDropdownOpen(false)}
+                  >
+                    📊 User Dashboard
+                  </Link>
+
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      className="user-dropdown-item"
+                      onClick={() => setUserDropdownOpen(false)}
+                    >
+                      👑 Admin Panel
+                    </Link>
+                  )}
+
+                  <button
+                    type="button"
+                    className="user-dropdown-item"
+                    onClick={() => {
+                      setUserDropdownOpen(false);
+                      onOpenOrderModal();
+                    }}
+                  >
+                    ⚡ Buy Number
+                  </button>
+
+                  <a
+                    href={siteConfig.whatsappUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="user-dropdown-item"
+                    onClick={() => setUserDropdownOpen(false)}
+                  >
+                    💬 WhatsApp Support
+                  </a>
+
+                  <button
+                    type="button"
+                    className="user-dropdown-item text-danger"
+                    onClick={() => {
+                      setUserDropdownOpen(false);
+                      logout();
+                    }}
+                  >
+                    🚪 Sign Out
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="desktop-auth-actions">
+              <Link 
+                to="/auth?mode=login" 
+                className="btn btn-ghost btn-auth-login"
+              >
+                Login
+              </Link>
+              <Link 
+                to="/auth?mode=signup" 
+                className="btn btn-primary btn-sm btn-auth-signup"
+              >
+                Sign Up
+              </Link>
+            </div>
+          )}
+
+          {/* Mobile Hamburger Toggle */}
           <button
             className="mobile-toggle"
             type="button"
