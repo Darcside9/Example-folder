@@ -18,11 +18,12 @@ export default function ServicesSection({ onSelectService }) {
             <polyline points="12 6 12 12 16 14"/>
           </svg>
         );
-      case 'api':
+      case 'bulk':
         return (
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="16 18 22 12 16 6"/>
-            <polyline points="8 6 2 12 8 18"/>
+            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+            <polyline points="2 17 12 22 22 17"/>
+            <polyline points="2 12 12 17 22 12"/>
           </svg>
         );
       default:
@@ -36,7 +37,7 @@ export default function ServicesSection({ onSelectService }) {
         <span className="eyebrow">Carrier Solutions</span>
         <h2>Enterprise & Retail SMS Services</h2>
         <p>
-          Whether you need a quick one-time code for social login or hundreds of thousands of automated API requests, Chris Shopper delivers.
+          Whether you need a quick one-time code for social login or large-scale wholesale verifications, Chris Shopper delivers.
         </p>
       </div>
 

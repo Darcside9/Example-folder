@@ -38,8 +38,8 @@ export const trustHighlights = [
     description: 'If you do not receive a verification code within the session duration, 100% of your funds are automatically returned.',
   },
   {
-    icon: 'code',
-    title: 'Developer-First REST API',
-    description: 'Integrate automated verifications into your CI/CD, bot, or application pipeline with simple webhooks and SDKs.',
+    icon: 'support',
+    title: 'Direct WhatsApp Support',
+    description: 'Get immediate help for custom carrier requests, line availability, or balance top-ups with dedicated human support.',
   },
 ];

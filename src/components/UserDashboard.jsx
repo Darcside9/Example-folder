@@ -18,7 +18,7 @@ import { siteConfig } from '../data/siteConfig';
 export default function UserDashboard({ user, onSignOut }) {
   const navigate = useNavigate();
   // Navigation & Sub-views
-  const [activeTab, setActiveTab] = useState('receive-sms'); // 'receive-sms' | 'add-funds' | 'transfer' | 'history' | 'api' | 'news' | 'settings'
+  const [activeTab, setActiveTab] = useState('receive-sms'); // 'receive-sms' | 'add-funds' | 'transfer' | 'history' | 'news' | 'settings'
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Live Data State
@@ -308,16 +308,6 @@ export default function UserDashboard({ user, onSignOut }) {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/>
               </svg>
               <span>History</span>
-            </button>
-
-            <button 
-              className={`sidebar-nav-item ${activeTab === 'api' ? 'active' : ''}`}
-              onClick={() => { setActiveTab('api'); setSidebarOpen(false); }}
-            >
-              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/>
-              </svg>
-              <span>API</span>
             </button>
           </nav>
         </div>
@@ -659,50 +649,6 @@ export default function UserDashboard({ user, onSignOut }) {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 3: API & DEVELOPER */}
-        {activeTab === 'api' && (
-          <div className="dash-sub-view">
-            <div className="sub-view-header">
-              <h2>Developer API Integration</h2>
-              <p>Automate USA virtual number provisioning via JSON REST endpoints.</p>
-            </div>
-
-            <div className="api-dash-card">
-              <div className="api-key-box">
-                <span className="api-key-label">YOUR REST API KEY</span>
-                <div className="api-key-row">
-                  <input 
-                    type="text" 
-                    readOnly 
-                    value={`cs_live_${user?.id ? user.id.replace(/-/g, '').slice(0, 24) : 'e849204859a0fbc'}`} 
-                    className="api-key-input"
-                  />
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => copyToClipboard(`cs_live_${user?.id ? user.id.replace(/-/g, '').slice(0, 24) : 'e849204859a0fbc'}`, 'API Key')}
-                  >
-                    Copy Key
-                  </button>
-                </div>
-              </div>
-
-              <h3>1. Request Instant Number</h3>
-              <div className="code-block">
-                {`curl -X POST https://api.chrisshopper.com/v1/rent \\
-  -H "Authorization: Bearer YOUR_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"service": "telegram", "country": "us"}'`}
-              </div>
-
-              <h3>2. Retrieve Received SMS Code</h3>
-              <div className="code-block">
-                {`curl -X GET https://api.chrisshopper.com/v1/sms/ord_948201 \\
-  -H "Authorization: Bearer YOUR_API_KEY"`}
-              </div>
             </div>
           </div>
         )}

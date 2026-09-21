@@ -5,7 +5,6 @@ import Hero from './components/Hero';
 import HowItWorks from './components/HowItWorks';
 import ServicesSection from './components/ServicesSection';
 import PricingCatalog from './components/PricingCatalog';
-import ApiShowcaseSection from './components/ApiShowcaseSection';
 import TrustMetrics from './components/TrustMetrics';
 import FaqSection from './components/FaqSection';
 import SupportSection from './components/SupportSection';
@@ -78,7 +77,6 @@ export default function App() {
                   onSelectPlan={(plan) => handleOpenOrderModal(plan)}
                   onNotifySoon={(serviceName) => showToast(`You'll be notified when ${serviceName} numbers go live!`)}
                 />
-                <ApiShowcaseSection />
                 <FaqSection />
                 <SupportSection />
               </main>

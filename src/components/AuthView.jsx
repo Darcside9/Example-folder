@@ -119,8 +119,8 @@ export default function AuthView() {
           </h1>
 
           <p className="auth-lead-text">
-            {mode === 'signup' && 'Join Chris Shopper to provision non-VoIP carrier lines, receive OTPs in real-time, and manage automated SMS requests.'}
-            {mode === 'login' && 'Sign in to access your dashboard, monitor active virtual numbers, copy verification codes, and view API credentials.'}
+            {mode === 'signup' && 'Join Chris Shopper to provision non-VoIP carrier lines, receive OTPs in real-time, and manage your verification numbers.'}
+            {mode === 'login' && 'Sign in to access your dashboard, monitor active virtual numbers, copy verification codes, and manage your balance.'}
             {mode === 'forgot' && 'Enter the email address associated with your account and we will send you verification instructions.'}
           </p>
 

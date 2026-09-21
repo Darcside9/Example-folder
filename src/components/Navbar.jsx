@@ -47,13 +47,13 @@ export default function Navbar({ onOpenOrderModal }) {
         <>
           <a href="#services" onClick={closeMenu}>Services</a>
           <a href="#pricing" onClick={closeMenu}>Pricing</a>
-          <a href="#api" onClick={closeMenu}>API Docs</a>
+          <a href="#faq" onClick={closeMenu}>FAQ</a>
         </>
       ) : (
         <>
           <Link to="/" onClick={closeMenu}>Services</Link>
           <Link to="/" onClick={closeMenu}>Pricing</Link>
-          <Link to="/" onClick={closeMenu}>API Docs</Link>
+          <Link to="/" onClick={closeMenu}>FAQ</Link>
         </>
       )}
       <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer" onClick={closeMenu}>💬 WhatsApp Support</a>

@@ -51,7 +51,7 @@ export const pricingPlans = [
     category: 'ai',
     price: '$0.15',
     label: '/ verification',
-    description: 'Instant verification for OpenAI, ChatGPT Plus, and API developer accounts.',
+    description: 'Instant verification for OpenAI and ChatGPT Plus accounts.',
     successRate: '99.8%',
     badge: 'Coming Soon',
     badgeType: 'soon',

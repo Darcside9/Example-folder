@@ -1,3 +1,5 @@
+import { siteConfig } from '../data/siteConfig';
+
 export default function Footer() {
   return (
     <footer className="site-footer">
@@ -12,7 +14,7 @@ export default function Footer() {
             <span className="brand-text">Chris <span className="brand-highlight">Shopper</span></span>
           </a>
           <p className="footer-tagline">
-            Enterprise-grade SMS verification and non-VoIP temporary phone numbers for global developer and retail authentication.
+            Enterprise-grade SMS verification and non-VoIP temporary phone numbers for private and retail authentication.
           </p>
           <div className="footer-status-pill">
             <span className="pulse-dot" />
@@ -26,7 +28,7 @@ export default function Footer() {
             <a href="#services">One-Time SMS Codes</a>
             <a href="#services">Dedicated Line Rental</a>
             <a href="#pricing">Volume & Wholesale</a>
-            <a href="#api">Developer REST API</a>
+            <a href="#how-it-works">How It Works</a>
           </div>
 
           <div className="footer-col">
@@ -39,11 +41,11 @@ export default function Footer() {
           </div>
 
           <div className="footer-col">
-            <h4>Developers</h4>
-            <a href="#api">API Documentation</a>
-            <a href="#api">Webhook Guides</a>
-            <a href="#api">Rate Limits & SLAs</a>
-            <a href="#support">Uptime Status</a>
+            <h4>Help & Guidance</h4>
+            <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer">WhatsApp Helpdesk</a>
+            <a href="#support">Direct Support Inquiry</a>
+            <a href="#faq">Frequently Answered Questions</a>
+            <a href="#how-it-works">Verification Guide</a>
           </div>
 
           <div className="footer-col">

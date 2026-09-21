@@ -52,16 +52,17 @@ export default function SupportSection() {
             <div className="support-card-top">
               <div className="support-icon-badge">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2">
-                  <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-                  <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                  <circle cx="12" cy="12" r="10"/>
+                  <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                  <line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
               </div>
-              <span className="support-meta-tag">Developer Docs</span>
+              <span className="support-meta-tag">Self-Service</span>
             </div>
-            <h3>REST API Documentation</h3>
-            <p>Explore code examples in cURL, Node.js, and Python to automate number ordering into your applications.</p>
-            <a href="#api" className="support-link-docs">
-              View API Documentation →
+            <h3>Frequently Asked Questions</h3>
+            <p>Learn how temporary lines work, review verification delivery guarantees, and get answers to common questions.</p>
+            <a href="#faq" className="support-link-docs">
+              Browse Common Questions →
             </a>
           </div>
         </div>
@@ -103,7 +104,7 @@ export default function SupportSection() {
                   id="supportDetails"
                   rows="4"
                   required
-                  placeholder="Describe how many numbers you need, target countries, or API integration details..."
+                  placeholder="Describe how many numbers you need, target countries, or specific service requirements..."
                   value={formState.details}
                   onChange={(e) => setFormState({ ...formState, details: e.target.value })}
                 />
