@@ -1,0 +1,128 @@
+/* ==========================================================================
+   TRUST METRICS & STATS (MOBILE FIRST)
+   ========================================================================== */
+
+.metrics-trust-section {
+  padding: 48px 16px;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.stats-ticker-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  max-width: 1200px;
+  margin: 0 auto 48px auto;
+}
+
+.stat-ticker-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 24px;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+}
+
+.stat-counter-number {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--accent-cyan);
+  line-height: 1;
+  margin-bottom: 8px;
+  text-shadow: 0 0 20px rgba(56, 189, 248, 0.3);
+}
+
+.stat-counter-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.stat-counter-sub {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.trust-pillars-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.trust-pillar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.trust-icon-box {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  box-shadow: inset 0 0 20px rgba(56, 189, 248, 0.05);
+}
+
+.trust-pillar-card h4 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 12px 0;
+}
+
+.trust-pillar-card p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Desktop Enhancements */
+@media (min-width: 768px) {
+  .metrics-trust-section {
+    padding: 80px 24px;
+  }
+
+  .stats-ticker-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px;
+  }
+
+  .stat-ticker-card {
+    background: transparent;
+    border: none;
+    padding: 0;
+  }
+
+  .stat-counter-number {
+    font-size: 3rem;
+  }
+
+  .trust-pillars-grid {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 32px;
+  }
+
+  .trust-pillar-card {
+    align-items: flex-start;
+    text-align: left;
+    padding: 0;
+  }
+}

@@ -1,0 +1,62 @@
+/* ==========================================================================
+   GLOBAL ANIMATIONS (GPU Optimized)
+   ========================================================================== */
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes slideInUp {
+    from {
+      transform: translate3d(0, 20px, 0);
+      opacity: 0;
+    }
+    to {
+      transform: translate3d(0, 0, 0);
+      opacity: 1;
+    }
+  }
+
+  @keyframes pulseGlow {
+    0% {
+      transform: scale3d(0.95, 0.95, 1);
+      opacity: 0.8;
+    }
+    50% {
+      transform: scale3d(1.3, 1.3, 1);
+      opacity: 1;
+      box-shadow: 0 0 16px var(--accent-green);
+    }
+    100% {
+      transform: scale3d(0.95, 0.95, 1);
+      opacity: 0.8;
+    }
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+}
+
+/* Reduced motion fallbacks */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

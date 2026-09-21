@@ -1,0 +1,251 @@
+/* ==========================================================================
+   API SHOWCASE SECTION (MOBILE FIRST)
+   ========================================================================== */
+
+.api-showcase-section {
+  padding: 48px 16px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.api-section {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+  margin-top: 32px;
+}
+
+.api-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.api-intro-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.api-intro-card h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 12px 0;
+}
+
+.api-intro-card p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin: 0 0 20px 0;
+}
+
+.api-endpoints-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.endpoint-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.method {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.method.post {
+  background: rgba(74, 222, 128, 0.15);
+  color: var(--accent-green);
+}
+
+.method.get {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--accent-cyan);
+}
+
+.method.delete {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.endpoint-item code {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+
+.endpoint-item .desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  width: 100%;
+  margin-top: 4px;
+}
+
+.api-features-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.api-feature-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+
+.api-feat-icon {
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.api-feature-card strong {
+  display: block;
+  font-size: 1rem;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.api-feature-card p {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.api-code-wrapper {
+  background: #0d1117; /* GitHub dark theme background */
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.api-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #161b22;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 8px 16px;
+}
+
+.api-tab-buttons {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.api-tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.api-tab-btn:hover {
+  color: #c9d1d9;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.api-tab-btn.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.copy-code-btn-sm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.copy-code-btn-sm:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.api-code {
+  padding: 16px;
+  overflow-x: auto;
+}
+
+.api-code pre {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #c9d1d9;
+}
+
+
+/* Desktop Enhancements */
+@media (min-width: 768px) {
+  .api-showcase-section {
+    padding: 80px 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+
+  .api-section {
+    flex-direction: row;
+    gap: 48px;
+    align-items: stretch;
+  }
+
+  .api-copy {
+    flex: 1;
+  }
+
+  .api-code-wrapper {
+    flex: 1.2;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .api-code {
+    flex: 1;
+    display: flex;
+  }
+
+  .endpoint-item {
+    flex-wrap: nowrap;
+  }
+  
+  .endpoint-item .desc {
+    width: auto;
+    margin-top: 0;
+    margin-left: auto;
+  }
+}

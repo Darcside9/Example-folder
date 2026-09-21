@@ -1,0 +1,43 @@
+/* ==========================================================================
+   2A: RESET
+   ========================================================================== */
+
+/* 2A.1 Set box-sizing globally */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* 2A.2 Prevent horizontal overflow on mobile */
+* {
+  max-width: 100%;
+}
+
+/* 2A.3 Reset margins, paddings, and font inheritance */
+body, h1, h2, h3, h4, h5, h6, p, figure, blockquote, dl, dd {
+  margin: 0;
+  padding: 0;
+}
+
+/* 2A.4 Make media elements behave responsively */
+img, svg, video, picture {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* 2A.5 iOS Safari text size adjust */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* 2A.6 Smooth scrolling, respecting user preferences */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Form resets */
+input, button, textarea, select {
+  font: inherit;
+}

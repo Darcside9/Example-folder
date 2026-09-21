@@ -1,0 +1,38 @@
+/* ==========================================================================
+   TOAST NOTIFICATION
+   ========================================================================== */
+
+.toast-notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  max-width: calc(100vw - 48px);
+  background: rgba(10, 19, 44, 0.96);
+  border: 1px solid var(--accent-cyan);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), var(--glow-primary);
+  border-radius: var(--radius-md);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: var(--z-toast, 9999);
+  animation: slideInUp 0.3s ease;
+}
+
+/* Mobile-first: bottom anchored */
+@media (max-width: 639px) {
+  .toast-notification {
+    bottom: env(safe-area-inset-bottom, 24px);
+    right: 50%;
+    transform: translateX(50%);
+    width: calc(100vw - 32px);
+  }
+}
+
+.toast-icon { font-size: 1.2rem; flex-shrink: 0; }
+.toast-msg { font-weight: 600; font-size: 0.9rem; line-height: 1.4; }
+
+@keyframes slideInUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
