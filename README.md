@@ -33,7 +33,7 @@ A modern, high-performance React + Vite web application for **Chris Shopper** �
 ## Project Structure
 
 - `index.html` — Vite HTML entrypoint with custom SEO metadata and fonts
-- `src/main.jsx` — React bootstrap
+- `src/main.jsx` — React bootstrap (imports `src/styles/index.css`)
 - `src/App.jsx` — Main application layout & global state
 - `src/components/`
   - `Navbar.jsx` — Sticky header, mobile navigation drawer & language picker
@@ -48,5 +48,14 @@ A modern, high-performance React + Vite web application for **Chris Shopper** �
   - `SupportSection.jsx` — 24/7 channels & contact form
   - `QuickOrderModal.jsx` — Interactive checkout / number allocator
   - `Footer.jsx` — Unified branding, status pill, and payment badges
+- `src/hooks/`
+  - `useMediaQuery.js` — Responsive viewport matching hook
 - `src/data/` — Modular datasets (pricing, services, code snippets, FAQs, stats)
-- `src/styles.css` — Modern design system and responsive styles
+- `src/styles/` — Modular, mobile-first design system
+  - `index.css` — Central cascade entrypoint
+  - `reset.css` — Defensive modern CSS reset
+  - `variables.css` — Fluid typography, colors, radii, spacing tokens
+  - `base.css` — Base typography, HTML elements, utilities
+  - `layout.css` — Containers, flex/grid systems, button variants
+  - `animations.css` — GPU-accelerated motion & reduced-motion queries
+  - `components/` — 16+ dedicated component stylesheets
