@@ -55,3 +55,16 @@ tmp/
 temp/
 scratch/
 *.tmp
+
+# Continue (AI assistant local context - never commit)
+.continue/
+
+# Local config overrides (e.g. settings.local.json)
+*.local.json
+*.local.yml
+*.local.yaml
+
+# Supabase local dev artifacts
+supabase/.branches/
+supabase/.temp/
+stats.json
