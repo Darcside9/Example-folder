@@ -14,7 +14,7 @@ export default function SupportSection() {
 
   return (
     <section id="support" className="section support-section">
-      <div className="section-heading">
+      <div className="section-heading text-center">
         <span className="eyebrow">Direct WhatsApp Support</span>
         <h2>Need Help or Custom Platform Lines?</h2>
         <p>
