@@ -5,7 +5,6 @@ const mockServices = [
   { id: 'whatsapp', name: 'WhatsApp', dial: '+1 (312) 640-8812', code: '492-301', prefix: 'Your WhatsApp verification code is ' },
   { id: 'openai', name: 'OpenAI / ChatGPT', dial: '+1 (206) 554-7109', code: '819204', prefix: 'OpenAI security code: ' },
   { id: 'google', name: 'Google', dial: '+1 (650) 419-3320', code: '503819', prefix: 'G-' },
-  { id: 'discord', name: 'Discord', dial: '+1 (917) 382-4411', code: '912048', prefix: 'Discord verification code: ' },
 ];
 
 export default function LiveTerminalDemo() {

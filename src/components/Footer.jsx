@@ -33,11 +33,10 @@ export default function Footer() {
 
           <div className="footer-col">
             <h4>Supported Apps</h4>
-            <a href="#pricing">OpenAI / ChatGPT</a>
             <a href="#pricing">Telegram Verification</a>
             <a href="#pricing">WhatsApp Business</a>
-            <a href="#pricing">Google / Gmail</a>
-            <a href="#pricing">Discord & Steam</a>
+            <a href="#pricing">OpenAI / ChatGPT</a>
+            <a href="#pricing">Google & Gmail</a>
           </div>
 
           <div className="footer-col">
