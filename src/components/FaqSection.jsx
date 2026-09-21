@@ -36,7 +36,7 @@ export default function FaqSection() {
                   </svg>
                 </span>
               </button>
-              <div className="faq-content-wrapper" style={{ maxHeight: isOpen ? '300px' : '0px' }}>
+              <div className="faq-content-wrapper">
                 <div className="faq-content">
                   <p>{faq.answer}</p>
                 </div>

@@ -211,7 +211,7 @@ export default function UserDashboard({ user, onSignOut }) {
       <aside className={`mtel-sidebar ${sidebarOpen ? 'sidebar-mobile-open' : ''}`}>
         {/* Brand & Language */}
         <div className="sidebar-brand-row">
-          <a onClick={() => navigate('/')} className="mtel-brand" style={{ cursor: 'pointer' }}>
+          <a onClick={() => navigate('/')} className="mtel-brand cursor-pointer">
             <span className="brand-chris">Chris</span>
             <span className="brand-sms-pill">SMS</span>
           </a>
@@ -450,7 +450,7 @@ export default function UserDashboard({ user, onSignOut }) {
                             title={isActive ? `Rent ${srv.name} ($${srv.price.toFixed(2)})` : 'Service Coming Soon / Request on WhatsApp'}
                           >
                             <td className="td-service-name">
-                              <span className="srv-indicator-dot" style={{ background: isActive ? '#4ade80' : '#64748b' }}></span>
+                              <span className={`srv-indicator-dot ${isActive ? 'active' : 'inactive'}`}></span>
                               <strong>{srv.name}</strong>
                               {!isActive && <span className="tag-soon-tiny">SOON</span>}
                             </td>
@@ -766,8 +766,7 @@ export default function UserDashboard({ user, onSignOut }) {
                   href={siteConfig.getWhatsAppSupportUrl('Hi Chris Shopper, I would like to update my account details')}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn btn-primary btn-sm"
-                  style={{ width: 'fit-content' }}
+                  className="btn btn-primary btn-sm w-fit"
                 >
                   Contact on WhatsApp 💬
                 </a>
