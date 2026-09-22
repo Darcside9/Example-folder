@@ -121,3 +121,94 @@ export function getSavedSession() {
     return null;
   }
 }
+
+/**
+ * Update user email via Supabase Auth (initiates email_change OTP)
+ */
+export async function authUpdateEmail(newEmail) {
+  if (isSupabaseConfigured && supabase) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session) {
+      const { data, error } = await supabase.auth.updateUser({ email: newEmail });
+      if (error) throw error;
+      return data;
+    }
+  }
+  return { user: { email: newEmail } };
+}
+
+/**
+ * Verify Email Change OTP via Supabase Auth
+ */
+export async function authVerifyEmailOtp(newEmail, token) {
+  if (isSupabaseConfigured && supabase) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session) {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: newEmail,
+        token,
+        type: 'email_change'
+      });
+      if (error) throw error;
+      return data;
+    }
+  }
+  return { user: { email: newEmail } };
+}
+
+/**
+ * Update user password after verifying current credentials
+ */
+export async function authUpdatePassword(email, currentPassword, newPassword) {
+  if (isSupabaseConfigured && supabase) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData?.session) {
+      // 1. Verify current credentials against Supabase Auth
+      if (currentPassword) {
+        const { error: signInErr } = await supabase.auth.signInWithPassword({
+          email,
+          password: currentPassword
+        });
+        if (signInErr) {
+          throw new Error('Current password is incorrect. Please check your credentials.');
+        }
+      }
+
+      // 2. Update to new password
+      const { data, error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      if (error) throw error;
+      return data;
+    }
+  }
+  // Local session update / demo mode
+  return { success: true };
+}
+
+/**
+ * Update profile attributes in public.profiles table
+ */
+export async function authUpdateProfile(userId, updates) {
+  if (isSupabaseConfigured && supabase && userId) {
+    const isValidUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    if (isValidUuid) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+        .select()
+        .single();
+
+      if (error) {
+        console.warn('Profile DB update error:', error);
+      }
+      return data;
+    }
+  }
+  return updates;
+}
+

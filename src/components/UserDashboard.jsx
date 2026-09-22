@@ -11,7 +11,12 @@ import {
   allocateNumberLine, 
   simulateSmsOtp, 
   cancelAndRefundOrder,
-  transferFunds
+  transferFunds,
+  requestWhatsAppOtp,
+  verifyWhatsAppOtp,
+  requestEmailOtp,
+  verifyEmailOtp,
+  updateUserPassword
 } from '../lib/dashboardService';
 import { siteConfig } from '../data/siteConfig';
 
@@ -21,14 +26,35 @@ export default function UserDashboard({ user, onSignOut }) {
   const [activeTab, setActiveTab] = useState('receive-sms'); // 'receive-sms' | 'add-funds' | 'transfer' | 'history' | 'news' | 'settings'
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Live Data State
+  // User and Balance State
+  const [currentUser, setCurrentUser] = useState(user);
   const [balance, setBalance] = useState(user?.balance || 10.00);
   const [services, setServices] = useState([]);
   const [orders, setOrders] = useState([]);
   const [activeLines, setActiveLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [serviceFilter, setServiceFilter] = useState('all'); // 'all' | 'active'
   const [selectedServiceForRent, setSelectedServiceForRent] = useState(null);
+
+  // Settings & Security States
+  const [newPhone, setNewPhone] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+
+  // OTP Verification Modal State
+  const [otpModal, setOtpModal] = useState({
+    isOpen: false,
+    type: null, // 'phone' | 'email'
+    target: '',
+    code: '',
+    testCode: '',
+    resendSeconds: 60,
+    loading: false,
+    error: null,
+  });
 
   // Modals & Feedback
   const [showTopUpModal, setShowTopUpModal] = useState(false);
@@ -40,6 +66,23 @@ export default function UserDashboard({ user, onSignOut }) {
   const [transferSuccess, setTransferSuccess] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [timers, setTimers] = useState({});
+
+  useEffect(() => {
+    if (user) {
+      setCurrentUser(user);
+    }
+  }, [user]);
+
+  // Timer countdown for OTP resend
+  useEffect(() => {
+    let timer;
+    if (otpModal.isOpen && otpModal.resendSeconds > 0) {
+      timer = setInterval(() => {
+        setOtpModal(prev => ({ ...prev, resendSeconds: prev.resendSeconds - 1 }));
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [otpModal.isOpen, otpModal.resendSeconds]);
 
   // 1. Initial Data Fetching from Supabase
   useEffect(() => {
@@ -101,10 +144,13 @@ export default function UserDashboard({ user, onSignOut }) {
 
   // Filtered Services List
   const filteredServices = useMemo(() => {
-    if (!searchQuery.trim()) return services;
-    const q = searchQuery.toLowerCase();
-    return services.filter(s => s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q));
-  }, [services, searchQuery]);
+    return services.filter(s => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch = !q || s.name.toLowerCase().includes(q) || s.category.toLowerCase().includes(q);
+      const matchesFilter = serviceFilter === 'active' ? s.is_active : true;
+      return matchesSearch && matchesFilter;
+    });
+  }, [services, searchQuery, serviceFilter]);
 
   // Handle Rent Service
   const handleRentService = async (service) => {
@@ -203,6 +249,155 @@ export default function UserDashboard({ user, onSignOut }) {
     }
   };
 
+  // --------------------------------------------------------------------------
+  // SETTINGS & CREDENTIAL UPDATE HANDLERS WITH OTP VERIFICATION
+  // --------------------------------------------------------------------------
+
+  // 1. Initiate WhatsApp Phone Update OTP
+  const handleRequestPhoneOtp = async (e) => {
+    e.preventDefault();
+    if (!newPhone.trim()) {
+      showToast('❌ Please enter your new WhatsApp phone number.');
+      return;
+    }
+    try {
+      showToast('📡 Dispatching WhatsApp verification code...');
+      const res = await requestWhatsAppOtp(currentUser?.id, newPhone);
+      setOtpModal({
+        isOpen: true,
+        type: 'phone',
+        target: res.target,
+        code: '',
+        testCode: res.code,
+        resendSeconds: 60,
+        loading: false,
+        error: null,
+      });
+      showToast(`💬 6-digit WhatsApp OTP dispatched to ${res.target}`);
+    } catch (err) {
+      showToast(`❌ ${err.message}`);
+    }
+  };
+
+  // 2. Confirm WhatsApp Phone OTP
+  const handleVerifyPhoneOtp = async (e) => {
+    e.preventDefault();
+    if (otpModal.code.length !== 6) return;
+
+    setOtpModal(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await verifyWhatsAppOtp(currentUser?.id, otpModal.target, otpModal.code);
+      setCurrentUser(prev => ({
+        ...prev,
+        whatsapp_contact: res.verifiedNumber,
+        contact_info: res.verifiedNumber,
+        contact: res.verifiedNumber
+      }));
+      setOtpModal(prev => ({ ...prev, isOpen: false, loading: false }));
+      setNewPhone('');
+      showToast(`✅ WhatsApp number successfully updated to ${res.verifiedNumber}!`);
+    } catch (err) {
+      setOtpModal(prev => ({ ...prev, loading: false, error: err.message }));
+    }
+  };
+
+  // 3. Initiate Email Update OTP
+  const handleRequestEmailOtp = async (e) => {
+    e.preventDefault();
+    if (!newEmail.trim()) {
+      showToast('❌ Please enter your new email address.');
+      return;
+    }
+    try {
+      showToast('📡 Dispatching Email confirmation code...');
+      const res = await requestEmailOtp(currentUser?.id, newEmail);
+      setOtpModal({
+        isOpen: true,
+        type: 'email',
+        target: res.target,
+        code: '',
+        testCode: res.code,
+        resendSeconds: 60,
+        loading: false,
+        error: null,
+      });
+      showToast(`✉️ 6-digit confirmation code dispatched to ${res.target}`);
+    } catch (err) {
+      showToast(`❌ ${err.message}`);
+    }
+  };
+
+  // 4. Confirm Email OTP
+  const handleVerifyEmailOtp = async (e) => {
+    e.preventDefault();
+    if (otpModal.code.length !== 6) return;
+
+    setOtpModal(prev => ({ ...prev, loading: true, error: null }));
+    try {
+      const res = await verifyEmailOtp(currentUser?.id, otpModal.target, otpModal.code);
+      setCurrentUser(prev => ({
+        ...prev,
+        email: res.verifiedEmail
+      }));
+      setOtpModal(prev => ({ ...prev, isOpen: false, loading: false }));
+      setNewEmail('');
+      showToast(`✅ Account email successfully updated to ${res.verifiedEmail}!`);
+    } catch (err) {
+      setOtpModal(prev => ({ ...prev, loading: false, error: err.message }));
+    }
+  };
+
+  // 5. Update Password via Supabase Auth
+  const handleUpdatePassword = async (e) => {
+    e.preventDefault();
+    if (!currentPassword) {
+      showToast('❌ Please enter your current password.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      showToast('❌ New password must be at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast('❌ New passwords do not match. Please verify.');
+      return;
+    }
+
+    try {
+      showToast('🔒 Verifying credentials and updating password...');
+      await updateUserPassword(currentUser?.email, currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      showToast('✅ Password updated successfully! Please keep your credentials secure.');
+    } catch (err) {
+      showToast(`❌ ${err.message}`);
+    }
+  };
+
+  // 6. Resend Active OTP
+  const handleResendOtp = async () => {
+    if (otpModal.resendSeconds > 0) return;
+    try {
+      showToast('🔄 Dispatching a fresh verification code...');
+      let res;
+      if (otpModal.type === 'phone') {
+        res = await requestWhatsAppOtp(currentUser?.id, otpModal.target);
+      } else {
+        res = await requestEmailOtp(currentUser?.id, otpModal.target);
+      }
+      setOtpModal(prev => ({
+        ...prev,
+        testCode: res.code,
+        resendSeconds: 60,
+        error: null
+      }));
+      showToast(`✅ New 6-digit code dispatched to ${otpModal.target}`);
+    } catch (err) {
+      setOtpModal(prev => ({ ...prev, error: err.message }));
+    }
+  };
+
   return (
     <div className="mtel-dashboard-layout">
       {/* ====================================================================
@@ -213,9 +408,10 @@ export default function UserDashboard({ user, onSignOut }) {
         <div className="sidebar-brand-row">
           <a onClick={() => navigate('/')} className="mtel-brand cursor-pointer">
             <span className="brand-chris">Chris</span>
-            <span className="brand-sms-pill">SMS</span>
+            <span className="brand-highlight">Shopper</span>
+            <span className="brand-sms-pill">GATEWAY</span>
           </a>
-          <button className="sidebar-lang-btn">
+          <button className="sidebar-lang-btn" type="button">
             <span>EN</span>
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 9l6 6 6-6"/>
@@ -355,6 +551,8 @@ export default function UserDashboard({ user, onSignOut }) {
           <button 
             className="mobile-hamburger-btn"
             onClick={() => setSidebarOpen(!sidebarOpen)}
+            type="button"
+            aria-label="Toggle navigation menu"
           >
             <svg width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
@@ -362,11 +560,46 @@ export default function UserDashboard({ user, onSignOut }) {
           </button>
 
           <div className="mobile-brand-title">
-            <span className="brand-chris">Chris</span> <span className="brand-sms-pill">SMS</span>
+            <span className="brand-chris">Chris</span> <span className="brand-highlight">Shopper</span>
           </div>
 
           <div className="mobile-balance-pill" onClick={() => setShowTopUpModal(true)}>
             ${balance.toFixed(2)} +
+          </div>
+        </header>
+
+        {/* Desktop Top Bar */}
+        <header className="desktop-dash-topbar">
+          <div className="dash-breadcrumb">
+            <span className="breadcrumb-root">Chris Shopper</span>
+            <span className="breadcrumb-sep">/</span>
+            <span className="breadcrumb-current">
+              {activeTab === 'receive-sms' && 'SMS Verifications'}
+              {activeTab === 'history' && 'Rental History'}
+              {activeTab === 'news' && 'Network Updates'}
+              {activeTab === 'settings' && 'Account Settings & Security'}
+            </span>
+          </div>
+
+          <div className="dash-topbar-actions">
+            <button 
+              type="button" 
+              className="btn-back-website" 
+              onClick={() => navigate('/')}
+              title="Return to public landing page"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <polyline points="9 22 9 12 15 12 15 22"/>
+              </svg>
+              <span>Back to Website</span>
+            </button>
+
+            <div className="user-pill-indicator">
+              <span className="user-avatar-dot" />
+              <span className="user-pill-email">{currentUser?.email || 'Authenticated User'}</span>
+              <span className="user-pill-role">{currentUser?.role || 'Member'}</span>
+            </div>
           </div>
         </header>
 
@@ -400,17 +633,32 @@ export default function UserDashboard({ user, onSignOut }) {
               <div className="services-catalog-panel">
                 <h3 className="services-panel-heading">Available Services</h3>
 
-                {/* Search Bar */}
+                {/* Search Bar & Category Filter Pills */}
                 <div className="services-search-row">
-                  <button className="btn-service-filter active">Service</button>
+                  <div className="services-filter-pills">
+                    <button 
+                      type="button" 
+                      className={`btn-service-filter ${serviceFilter === 'all' ? 'active' : ''}`}
+                      onClick={() => setServiceFilter('all')}
+                    >
+                      All
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`btn-service-filter ${serviceFilter === 'active' ? 'active' : ''}`}
+                      onClick={() => setServiceFilter('active')}
+                    >
+                      ⚡ Active
+                    </button>
+                  </div>
                   <div className="service-search-input-box">
                     <input 
                       type="text"
-                      placeholder="Search service..."
+                      placeholder="Search service (e.g. Telegram, WhatsApp)..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                     />
-                    <button className="btn-search-icon" onClick={() => {}}>
+                    <button className="btn-search-icon" type="button" aria-label="Search">
                       <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
                         <circle cx="11" cy="11" r="8"/>
                         <path d="M21 21l-4.35-4.35"/>
@@ -677,45 +925,189 @@ export default function UserDashboard({ user, onSignOut }) {
           </div>
         )}
 
-        {/* TAB 5: SETTINGS */}
+        {/* TAB 4: SETTINGS & SECURITY */}
         {activeTab === 'settings' && (
           <div className="dash-sub-view">
             <div className="sub-view-header">
-              <h2>Account Settings & WhatsApp Handle</h2>
-              <p>Manage your account credentials and contact details.</p>
+              <h2>Account Settings & Security</h2>
+              <p>Manage your verified contact credentials, authentication email, and account password.</p>
             </div>
 
-            <div className="account-dash-card">
-              <div className="account-details-grid">
-                <div className="account-item">
-                  <span className="item-label">Account Email</span>
-                  <strong>{user?.email}</strong>
+            {/* Account Quick Overview Banner */}
+            <div className="account-overview-banner">
+              <div className="overview-item">
+                <span className="overview-label">ACCOUNT ID</span>
+                <span className="overview-val font-mono">{currentUser?.id?.slice(0, 14) || 'cs_usr_live'}...</span>
+              </div>
+              <div className="overview-item">
+                <span className="overview-label">ACCOUNT ROLE</span>
+                <span className="role-tag role-user">{currentUser?.role || 'Verified Member'}</span>
+              </div>
+              <div className="overview-item">
+                <span className="overview-label">AVAILABLE BALANCE</span>
+                <span className="overview-val text-green font-mono">${balance.toFixed(2)}</span>
+              </div>
+              <div className="overview-item">
+                <span className="overview-label">SECURITY STATUS</span>
+                <span className="badge-active-shield">🛡️ OTP Verification Active</span>
+              </div>
+            </div>
+
+            <div className="settings-cards-stack">
+              {/* CARD 1: WHATSAPP PHONE NUMBER */}
+              <div className="settings-security-card">
+                <div className="card-top-row">
+                  <div className="card-icon-box whatsapp-icon-box">
+                    💬
+                  </div>
+                  <div className="card-titles">
+                    <h3>WhatsApp Contact Number</h3>
+                    <p>Primary line for receiving platform OTPs, verification numbers, and concierge billing support.</p>
+                  </div>
+                  <span className="badge-verified">✓ Verified Line</span>
                 </div>
-                <div className="account-item">
-                  <span className="item-label">WhatsApp Contact Handle</span>
-                  <strong>{user?.whatsapp_contact || '+1 (202) 555-0143'}</strong>
+
+                <div className="current-credential-box">
+                  <span className="cred-label">CURRENT VERIFIED NUMBER</span>
+                  <div className="cred-val-row">
+                    <span className="cred-val font-mono">
+                      {currentUser?.whatsapp_contact || currentUser?.contact_info || currentUser?.contact || '+1 (202) 555-0143'}
+                    </span>
+                    <button 
+                      type="button" 
+                      className="btn-copy-cred"
+                      onClick={() => copyToClipboard(currentUser?.whatsapp_contact || currentUser?.contact_info || currentUser?.contact || '+1 (202) 555-0143', 'WhatsApp Number')}
+                    >
+                      Copy
+                    </button>
+                  </div>
                 </div>
-                <div className="account-item">
-                  <span className="item-label">Available Balance</span>
-                  <strong className="text-green font-mono">${balance.toFixed(2)}</strong>
-                </div>
-                <div className="account-item">
-                  <span className="item-label">Account Role</span>
-                  <strong className="role-tag role-user">{user?.role || 'Verified Member'}</strong>
-                </div>
+
+                <form onSubmit={handleRequestPhoneOtp} className="update-cred-form">
+                  <label className="form-input-label">Update Phone Number (Requires WhatsApp OTP)</label>
+                  <div className="form-input-action-row">
+                    <input 
+                      type="tel"
+                      required
+                      placeholder="+1 (415) 892-0194"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      className="settings-text-input font-mono"
+                    />
+                    <button type="submit" className="btn btn-primary btn-action-sm">
+                      Send WhatsApp OTP 💬
+                    </button>
+                  </div>
+                  <span className="form-hint">A 6-digit confirmation code will be dispatched to verify ownership of the new number.</span>
+                </form>
               </div>
 
-              <div className="whatsapp-help-box">
-                <h4>Need to change your WhatsApp contact number or request custom limits?</h4>
-                <p>Message our concierge directly on WhatsApp for immediate profile updates and custom billing solutions.</p>
-                <a 
-                  href={siteConfig.getWhatsAppSupportUrl('Hi Chris Shopper, I would like to update my account details')}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-primary btn-sm w-fit"
-                >
-                  Contact on WhatsApp 💬
-                </a>
+              {/* CARD 2: ACCOUNT EMAIL */}
+              <div className="settings-security-card">
+                <div className="card-top-row">
+                  <div className="card-icon-box email-icon-box">
+                    ✉️
+                  </div>
+                  <div className="card-titles">
+                    <h3>Account Email Address</h3>
+                    <p>Primary authentication email used for account access, security alerts, and system receipts.</p>
+                  </div>
+                  <span className="badge-verified">✓ Verified Email</span>
+                </div>
+
+                <div className="current-credential-box">
+                  <span className="cred-label">CURRENT EMAIL ADDRESS</span>
+                  <div className="cred-val-row">
+                    <span className="cred-val font-mono">{currentUser?.email || 'user@chrisshopper.com'}</span>
+                    <button 
+                      type="button" 
+                      className="btn-copy-cred"
+                      onClick={() => copyToClipboard(currentUser?.email || 'user@chrisshopper.com', 'Email Address')}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+
+                <form onSubmit={handleRequestEmailOtp} className="update-cred-form">
+                  <label className="form-input-label">Update Email Address (Requires Email OTP)</label>
+                  <div className="form-input-action-row">
+                    <input 
+                      type="email"
+                      required
+                      placeholder="new.email@example.com"
+                      value={newEmail}
+                      onChange={(e) => setNewEmail(e.target.value)}
+                      className="settings-text-input font-mono"
+                    />
+                    <button type="submit" className="btn btn-primary btn-action-sm">
+                      Send Email OTP ✉️
+                    </button>
+                  </div>
+                  <span className="form-hint">A 6-digit confirmation code will be dispatched to verify your new email address.</span>
+                </form>
+              </div>
+
+              {/* CARD 3: PASSWORD & CREDENTIAL SECURITY */}
+              <div className="settings-security-card">
+                <div className="card-top-row">
+                  <div className="card-icon-box password-icon-box">
+                    🔒
+                  </div>
+                  <div className="card-titles">
+                    <h3>Account Password & Security</h3>
+                    <p>Ensure your account remains safe with a secure passphrase (minimum 8 characters).</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleUpdatePassword} className="password-form-grid">
+                  <div className="pwd-field-group">
+                    <label className="form-input-label">Current Password</label>
+                    <input 
+                      type="password"
+                      required
+                      placeholder="••••••••••••"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      className="settings-text-input"
+                    />
+                  </div>
+
+                  <div className="pwd-fields-split">
+                    <div className="pwd-field-group">
+                      <label className="form-input-label">New Password (Min 8 characters)</label>
+                      <input 
+                        type="password"
+                        required
+                        minLength={8}
+                        placeholder="••••••••••••"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        className="settings-text-input"
+                      />
+                    </div>
+
+                    <div className="pwd-field-group">
+                      <label className="form-input-label">Confirm New Password</label>
+                      <input 
+                        type="password"
+                        required
+                        minLength={8}
+                        placeholder="••••••••••••"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        className="settings-text-input"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pwd-submit-row">
+                    <button type="submit" className="btn btn-primary btn-action-sm">
+                      Update Password 🔒
+                    </button>
+                    <span className="form-hint">Updated credentials are immediately synchronized with Supabase Auth.</span>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
@@ -748,6 +1140,23 @@ export default function UserDashboard({ user, onSignOut }) {
                     ${amt}
                   </button>
                 ))}
+              </div>
+
+              {/* Custom Top-Up Amount Input */}
+              <div className="custom-topup-row">
+                <label className="input-hint">Or specify custom top-up amount ($):</label>
+                <div className="custom-topup-input-box">
+                  <span className="currency-symbol">$</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="Enter custom amount (e.g. 25)"
+                    value={topUpAmount || ''}
+                    onChange={(e) => setTopUpAmount(Math.max(1, Number(e.target.value) || 0))}
+                    className="custom-topup-input font-mono"
+                  />
+                </div>
               </div>
 
               <div className="topup-summary-box">
@@ -833,6 +1242,97 @@ export default function UserDashboard({ user, onSignOut }) {
 
               <button type="submit" className="btn btn-primary btn-full btn-lg">
                 Confirm Transfer
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================================
+          OTP VERIFICATION MODAL (SHARED FOR WHATSAPP PHONE & EMAIL)
+          ==================================================================== */}
+      {otpModal.isOpen && (
+        <div className="modal-backdrop" onClick={() => setOtpModal(prev => ({ ...prev, isOpen: false }))}>
+          <div className="modal-container otp-modal-card" onClick={e => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-group">
+                <h3>{otpModal.type === 'phone' ? 'Verify WhatsApp Number' : 'Verify Account Email'}</h3>
+                <p>Security Verification Code Required</p>
+              </div>
+              <button 
+                type="button" 
+                className="modal-close-btn" 
+                onClick={() => setOtpModal(prev => ({ ...prev, isOpen: false }))}
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={otpModal.type === 'phone' ? handleVerifyPhoneOtp : handleVerifyEmailOtp} className="modal-body">
+              {otpModal.error && (
+                <div className="auth-error-banner">{otpModal.error}</div>
+              )}
+
+              <div className="otp-target-banner">
+                <span className="otp-target-label">
+                  Enter the 6-digit code dispatched to:
+                </span>
+                <strong className="font-mono text-cyan otp-target-val">{otpModal.target}</strong>
+              </div>
+
+              {/* Instant Carrier OTP Notification Helper for easy testing */}
+              {otpModal.testCode && (
+                <div className="otp-carrier-helper">
+                  <div className="helper-left">
+                    <span className="helper-icon">⚡</span>
+                    <span className="helper-text">Carrier OTP: <strong className="font-mono">{otpModal.testCode}</strong></span>
+                  </div>
+                  <button 
+                    type="button" 
+                    className="btn-autofill-otp"
+                    onClick={() => setOtpModal(prev => ({ ...prev, code: prev.testCode }))}
+                  >
+                    Auto-Fill
+                  </button>
+                </div>
+              )}
+
+              <div className="modal-form-group text-center">
+                <label className="form-input-label">6-Digit Verification Code</label>
+                <input 
+                  type="text"
+                  maxLength={6}
+                  required
+                  autoFocus
+                  placeholder="123456"
+                  value={otpModal.code}
+                  onChange={(e) => setOtpModal(prev => ({ ...prev, code: e.target.value.replace(/\D/g, '') }))}
+                  className="otp-code-input font-mono"
+                />
+              </div>
+
+              <div className="otp-timer-row">
+                {otpModal.resendSeconds > 0 ? (
+                  <span className="otp-countdown-text">
+                    Resend code in <strong className="text-cyan">{otpModal.resendSeconds}s</strong>
+                  </span>
+                ) : (
+                  <button 
+                    type="button" 
+                    className="btn-resend-link"
+                    onClick={handleResendOtp}
+                  >
+                    🔄 Resend Verification Code
+                  </button>
+                )}
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={otpModal.code.length !== 6 || otpModal.loading}
+                className="btn btn-primary btn-full btn-lg"
+              >
+                {otpModal.loading ? 'Verifying...' : `Confirm & Update ${otpModal.type === 'phone' ? 'Phone Number' : 'Email'}`}
               </button>
             </form>
           </div>

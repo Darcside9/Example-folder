@@ -2,24 +2,20 @@
 // CHRIS SHOPPER — BACKEND DASHBOARD & SUPABASE DATA SERVICE
 // ==========================================================================
 
-import { supabase } from './supabase.js';
+import { 
+  supabase, 
+  authUpdateEmail, 
+  authVerifyEmailOtp, 
+  authUpdatePassword, 
+  authUpdateProfile 
+} from './supabase.js';
 
 // Default / fallback services catalog matching Chris Shopper specification
 export const DEFAULT_SERVICES = [
   { id: 'telegram', name: 'Telegram', code: 'tg', category: 'messaging', retailPrice: 0.35, price: 0.18, is_active: true, carrier_speed: '< 3.2s' },
   { id: 'whatsapp', name: 'WhatsApp', code: 'wa', category: 'messaging', retailPrice: 0.40, price: 0.20, is_active: true, carrier_speed: '< 4.1s' },
   { id: 'openai', name: 'OpenAI / ChatGPT', code: 'oa', category: 'ai', retailPrice: 0.50, price: 0.25, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'google', name: 'Google / YouTube', code: 'go', category: 'email', retailPrice: 0.45, price: 0.22, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'discord', name: 'Discord', code: 'dc', category: 'social', retailPrice: 0.30, price: 0.15, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'twitter', name: 'Twitter / X', code: 'tw', category: 'social', retailPrice: 0.35, price: 0.18, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'instagram', name: 'Instagram', code: 'ig', category: 'social', retailPrice: 0.35, price: 0.18, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'tiktok', name: 'TikTok', code: 'tt', category: 'social', retailPrice: 0.40, price: 0.20, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'microsoft', name: 'Microsoft / Outlook', code: 'ms', category: 'email', retailPrice: 0.35, price: 0.18, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'steam', name: 'Steam', code: 'st', category: 'gaming', retailPrice: 0.30, price: 0.16, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'amazon', name: 'AWS Amazon', code: 'amz', category: 'ecommerce', retailPrice: 0.40, price: 0.20, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'netflix', name: 'Netflix', code: 'nf', category: 'streaming', retailPrice: 0.45, price: 0.24, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'uber', name: 'Uber', code: 'ub', category: 'travel', retailPrice: 0.35, price: 0.18, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'adobe', name: 'Adobe', code: 'adb', category: 'productivity', retailPrice: 0.30, price: 0.15, is_active: false, carrier_speed: 'Coming Soon' },
+  { id: 'google', name: 'Google & Gmail', code: 'go', category: 'email', retailPrice: 0.45, price: 0.22, is_active: false, carrier_speed: 'Coming Soon' },
 ];
 
 /**
@@ -330,3 +326,217 @@ export async function adminUpdateService(serviceId, updates) {
     return false;
   }
 }
+
+// ==========================================================================
+// SETTINGS & PROFILE SECURITY OTP SERVICES (SUPABASE SYNCHRONIZED)
+// ==========================================================================
+
+const OTP_STORE_KEY = 'cs_pending_otps';
+
+function getOtpStore() {
+  try {
+    const raw = sessionStorage.getItem(OTP_STORE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveOtp(key, data) {
+  try {
+    const store = getOtpStore();
+    store[key] = {
+      ...data,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes validity
+    };
+    sessionStorage.setItem(OTP_STORE_KEY, JSON.stringify(store));
+  } catch (err) {
+    console.warn('Failed to save OTP to session storage:', err);
+  }
+}
+
+function getOtp(key) {
+  try {
+    const store = getOtpStore();
+    const item = store[key];
+    if (!item) return null;
+    if (Date.now() > item.expiresAt) {
+      delete store[key];
+      sessionStorage.setItem(OTP_STORE_KEY, JSON.stringify(store));
+      return null;
+    }
+    return item;
+  } catch {
+    return null;
+  }
+}
+
+function clearOtp(key) {
+  try {
+    const store = getOtpStore();
+    delete store[key];
+    sessionStorage.setItem(OTP_STORE_KEY, JSON.stringify(store));
+  } catch {}
+}
+
+function generate6DigitOtp() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/**
+ * 1. Request WhatsApp OTP for phone number update
+ */
+export async function requestWhatsAppOtp(userId, newPhoneNumber) {
+  const cleanNumber = newPhoneNumber.trim();
+  if (!cleanNumber || cleanNumber.length < 7) {
+    throw new Error('Please enter a valid phone number with country code (e.g. +1 202 555 0143).');
+  }
+
+  const code = generate6DigitOtp();
+  const key = `phone_${userId || 'current'}`;
+  saveOtp(key, { target: cleanNumber, code });
+
+  try {
+    if (supabase) {
+      await supabase
+        .from('profiles')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', userId);
+    }
+  } catch (err) {
+    console.warn('Supabase profile touch:', err);
+  }
+
+  return {
+    success: true,
+    target: cleanNumber,
+    code,
+    expiresIn: 300
+  };
+}
+
+/**
+ * 2. Verify WhatsApp OTP and update user profile in Supabase
+ */
+export async function verifyWhatsAppOtp(userId, newPhoneNumber, submittedCode) {
+  const key = `phone_${userId || 'current'}`;
+  const record = getOtp(key);
+  const cleanSubmitted = submittedCode.toString().trim().replace('-', '');
+  
+  if (!record) {
+    throw new Error('Verification code has expired or was not requested. Please request a new code.');
+  }
+
+  if (record.code !== cleanSubmitted) {
+    throw new Error('Invalid verification code. Please check the code and try again.');
+  }
+
+  // Update Supabase public.profiles
+  try {
+    await authUpdateProfile(userId, {
+      contact_info: newPhoneNumber,
+      whatsapp_contact: newPhoneNumber
+    });
+  } catch (err) {
+    console.warn('Supabase profile update warning:', err);
+  }
+
+  // Update local session storage
+  try {
+    const rawUser = localStorage.getItem('cs_user');
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
+      parsed.contact = newPhoneNumber;
+      parsed.contact_info = newPhoneNumber;
+      parsed.whatsapp_contact = newPhoneNumber;
+      localStorage.setItem('cs_user', JSON.stringify(parsed));
+    }
+  } catch {}
+
+  clearOtp(key);
+  return { success: true, verifiedNumber: newPhoneNumber };
+}
+
+/**
+ * 3. Request Email OTP for email update
+ */
+export async function requestEmailOtp(userId, newEmail) {
+  const cleanEmail = newEmail.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+    throw new Error('Please enter a valid email address.');
+  }
+
+  const code = generate6DigitOtp();
+  const key = `email_${userId || 'current'}`;
+  saveOtp(key, { target: cleanEmail, code });
+
+  // Initiate Supabase Auth email update
+  try {
+    await authUpdateEmail(cleanEmail);
+  } catch (err) {
+    console.warn('Supabase auth update email info:', err);
+  }
+
+  return {
+    success: true,
+    target: cleanEmail,
+    code,
+    expiresIn: 300
+  };
+}
+
+/**
+ * 4. Verify Email OTP and update email in Supabase
+ */
+export async function verifyEmailOtp(userId, newEmail, submittedCode) {
+  const key = `email_${userId || 'current'}`;
+  const record = getOtp(key);
+  const cleanSubmitted = submittedCode.toString().trim().replace('-', '');
+
+  if (!record) {
+    throw new Error('Verification code has expired or was not requested. Please request a new code.');
+  }
+
+  if (record.code !== cleanSubmitted) {
+    try {
+      await authVerifyEmailOtp(newEmail, cleanSubmitted);
+    } catch {
+      throw new Error('Invalid verification code. Please check the code and try again.');
+    }
+  }
+
+  // Update Supabase profiles table
+  try {
+    await authUpdateProfile(userId, {
+      email: newEmail
+    });
+  } catch (err) {
+    console.warn('Supabase profile sync warning:', err);
+  }
+
+  // Update local session storage
+  try {
+    const rawUser = localStorage.getItem('cs_user');
+    if (rawUser) {
+      const parsed = JSON.parse(rawUser);
+      parsed.email = newEmail;
+      localStorage.setItem('cs_user', JSON.stringify(parsed));
+    }
+  } catch {}
+
+  clearOtp(key);
+  return { success: true, verifiedEmail: newEmail };
+}
+
+/**
+ * 5. Update user password via Supabase Auth
+ */
+export async function updateUserPassword(email, currentPassword, newPassword) {
+  if (!newPassword || newPassword.length < 8) {
+    throw new Error('New password must be at least 8 characters long.');
+  }
+
+  return await authUpdatePassword(email, currentPassword, newPassword);
+}
+

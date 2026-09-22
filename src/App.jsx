@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Routes, Route, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import HowItWorks from './components/HowItWorks';
@@ -23,6 +23,9 @@ export default function App() {
   const [toastMessage, setToastMessage] = useState(null);
   const { currentUser, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const isWorkstation = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin');
 
   const showToast = (msg) => {
     setToastMessage(msg);
@@ -58,10 +61,12 @@ export default function App() {
 
   return (
     <div className="app-root">
-      {/* Top Navbar */}
-      <Navbar 
-        onOpenOrderModal={() => handleOpenOrderModal()} 
-      />
+      {/* Top Navbar: only for public marketing routes */}
+      {!isWorkstation && (
+        <Navbar 
+          onOpenOrderModal={() => handleOpenOrderModal()} 
+        />
+      )}
 
       <Routes>
         <Route 
