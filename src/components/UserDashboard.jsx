@@ -50,7 +50,6 @@ export default function UserDashboard({ user, onSignOut }) {
     type: null, // 'phone' | 'email'
     target: '',
     code: '',
-    testCode: '',
     resendSeconds: 60,
     loading: false,
     error: null,
@@ -268,7 +267,6 @@ export default function UserDashboard({ user, onSignOut }) {
         type: 'phone',
         target: res.target,
         code: '',
-        testCode: res.code,
         resendSeconds: 60,
         loading: false,
         error: null,
@@ -316,7 +314,6 @@ export default function UserDashboard({ user, onSignOut }) {
         type: 'email',
         target: res.target,
         code: '',
-        testCode: res.code,
         resendSeconds: 60,
         loading: false,
         error: null,
@@ -380,15 +377,14 @@ export default function UserDashboard({ user, onSignOut }) {
     if (otpModal.resendSeconds > 0) return;
     try {
       showToast('🔄 Dispatching a fresh verification code...');
-      let res;
       if (otpModal.type === 'phone') {
-        res = await requestWhatsAppOtp(currentUser?.id, otpModal.target);
+        await requestWhatsAppOtp(currentUser?.id, otpModal.target);
       } else {
-        res = await requestEmailOtp(currentUser?.id, otpModal.target);
+        await requestEmailOtp(currentUser?.id, otpModal.target);
       }
       setOtpModal(prev => ({
         ...prev,
-        testCode: res.code,
+        code: '',
         resendSeconds: 60,
         error: null
       }));
@@ -1279,23 +1275,6 @@ export default function UserDashboard({ user, onSignOut }) {
                 </span>
                 <strong className="font-mono text-cyan otp-target-val">{otpModal.target}</strong>
               </div>
-
-              {/* Instant Carrier OTP Notification Helper for easy testing */}
-              {otpModal.testCode && (
-                <div className="otp-carrier-helper">
-                  <div className="helper-left">
-                    <span className="helper-icon">⚡</span>
-                    <span className="helper-text">Carrier OTP: <strong className="font-mono">{otpModal.testCode}</strong></span>
-                  </div>
-                  <button 
-                    type="button" 
-                    className="btn-autofill-otp"
-                    onClick={() => setOtpModal(prev => ({ ...prev, code: prev.testCode }))}
-                  >
-                    Auto-Fill
-                  </button>
-                </div>
-              )}
 
               <div className="modal-form-group text-center">
                 <label className="form-input-label">6-Digit Verification Code</label>

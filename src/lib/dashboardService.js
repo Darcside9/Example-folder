@@ -411,7 +411,6 @@ export async function requestWhatsAppOtp(userId, newPhoneNumber) {
   return {
     success: true,
     target: cleanNumber,
-    code,
     expiresIn: 300
   };
 }
@@ -481,7 +480,6 @@ export async function requestEmailOtp(userId, newEmail) {
   return {
     success: true,
     target: cleanEmail,
-    code,
     expiresIn: 300
   };
 }
