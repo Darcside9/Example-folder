@@ -3,7 +3,7 @@
 // ==========================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   getServices, 
   getUserProfile, 
@@ -19,11 +19,14 @@ import {
   updateUserPassword
 } from '../lib/dashboardService';
 import { siteConfig } from '../data/siteConfig';
+import LogsMarketplace from './LogsMarketplace';
+import { getPurchasedLogs, downloadCredentialsFile } from '../lib/logsService';
 
 export default function UserDashboard({ user, onSignOut }) {
   const navigate = useNavigate();
+  const location = useLocation();
   // Navigation & Sub-views
-  const [activeTab, setActiveTab] = useState('receive-sms'); // 'receive-sms' | 'add-funds' | 'transfer' | 'history' | 'news' | 'settings'
+  const [activeTab, setActiveTab] = useState('receive-sms'); // 'receive-sms' | 'logs' | 'add-funds' | 'transfer' | 'history' | 'news' | 'settings'
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // User and Balance State
@@ -32,6 +35,9 @@ export default function UserDashboard({ user, onSignOut }) {
   const [services, setServices] = useState([]);
   const [orders, setOrders] = useState([]);
   const [activeLines, setActiveLines] = useState([]);
+  const [purchasedLogsList, setPurchasedLogsList] = useState([]);
+  const [historySubTab, setHistorySubTab] = useState('sms'); // 'sms' | 'logs'
+  const [revealedPasswords, setRevealedPasswords] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [serviceFilter, setServiceFilter] = useState('all'); // 'all' | 'active'
@@ -83,7 +89,16 @@ export default function UserDashboard({ user, onSignOut }) {
     return () => clearInterval(timer);
   }, [otpModal.isOpen, otpModal.resendSeconds]);
 
-  // 1. Initial Data Fetching from Supabase
+  // Handle URL tab param (e.g. /dashboard?tab=logs)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['receive-sms', 'logs', 'history', 'news', 'settings'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [location.search]);
+
+  // 1. Initial Data Fetching from Supabase & Local Storage
   useEffect(() => {
     async function loadData() {
       setLoading(true);
@@ -103,6 +118,9 @@ export default function UserDashboard({ user, onSignOut }) {
         // Filter currently active / pending orders
         const pending = userOrders.filter(o => o.status === 'pending' || o.status === 'code_received');
         setActiveLines(pending);
+
+        // Load purchased account logs
+        setPurchasedLogsList(getPurchasedLogs(user?.id));
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -444,6 +462,17 @@ export default function UserDashboard({ user, onSignOut }) {
             </button>
 
             <button 
+              className={`sidebar-nav-item ${activeTab === 'logs' ? 'active' : ''}`}
+              onClick={() => { setActiveTab('logs'); setSidebarOpen(false); }}
+            >
+              <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"/>
+              </svg>
+              <span>Account Logs</span>
+              <span className="tag-soon-tiny" style={{ background: '#00e5ff', color: '#000', fontWeight: 700, marginLeft: 'auto' }}>NEW</span>
+            </button>
+
+            <button 
               className="sidebar-nav-item"
               onClick={() => setShowTopUpModal(true)}
             >
@@ -571,7 +600,8 @@ export default function UserDashboard({ user, onSignOut }) {
             <span className="breadcrumb-sep">/</span>
             <span className="breadcrumb-current">
               {activeTab === 'receive-sms' && 'SMS Verifications'}
-              {activeTab === 'history' && 'Rental History'}
+              {activeTab === 'logs' && 'Social & Platform Account Logs'}
+              {activeTab === 'history' && 'Orders & Logs History'}
               {activeTab === 'news' && 'Network Updates'}
               {activeTab === 'settings' && 'Account Settings & Security'}
             </span>
@@ -840,60 +870,240 @@ export default function UserDashboard({ user, onSignOut }) {
           </div>
         )}
 
+        {/* TAB: SOCIAL & PLATFORM ACCOUNT LOGS */}
+        {activeTab === 'logs' && (
+          <div className="dash-sub-view">
+            <div className="sub-view-header">
+              <h2>🔑 Social & Platform Account Logs</h2>
+              <p>Browse aged accounts with 2FA, Outlook email access, and instant FIFO delivery from live Google Sheets.</p>
+            </div>
+
+            <LogsMarketplace 
+              isDashboard={true}
+              onShowToast={showToast}
+              onPurchaseComplete={(newCred) => {
+                setPurchasedLogsList(getPurchasedLogs(currentUser?.id));
+                if (currentUser?.id) {
+                  getUserProfile(currentUser.id).then(profile => {
+                    if (profile?.balance !== undefined) setBalance(Number(profile.balance));
+                  });
+                }
+              }}
+            />
+          </div>
+        )}
+
         {/* TAB 2: HISTORY (FULL LOG) */}
         {activeTab === 'history' && (
           <div className="dash-sub-view">
             <div className="sub-view-header">
-              <h2>Rental History</h2>
-              <p>Complete historical log of your carrier number verifications.</p>
+              <h2>Order & Dispense History</h2>
+              <p>Complete historical log of your carrier number verifications and purchased account credentials.</p>
             </div>
 
-            <div className="dash-table-card">
-              <table className="dash-table">
-                <thead>
-                  <tr>
-                    <th>ORDER ID</th>
-                    <th>SERVICE</th>
-                    <th>PHONE NUMBER</th>
-                    <th>SMS CODE</th>
-                    <th>COST</th>
-                    <th>STATUS</th>
-                    <th>DATE</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="text-center py-6 text-muted">
-                        No previous orders found.
-                      </td>
-                    </tr>
-                  ) : (
-                    orders.map(order => (
-                      <tr key={order.id}>
-                        <td className="font-mono">#{order.id.toString().slice(-6)}</td>
-                        <td><strong>{order.service_name}</strong></td>
-                        <td className="font-mono">{order.phone_number}</td>
-                        <td className="font-mono">
-                          {order.sms_code ? (
-                            <span className="text-green font-bold">{order.sms_code}</span>
-                          ) : (
-                            <span className="text-muted">-</span>
-                          )}
-                        </td>
-                        <td className="font-mono">${Number(order.cost || 0).toFixed(2)}</td>
-                        <td>
-                          <span className={`status-pill pill-${order.status}`}>
-                            {order.status}
-                          </span>
-                        </td>
-                        <td>{new Date(order.created_at).toLocaleDateString()}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+            {/* Sub-tab pills */}
+            <div className="services-filter-pills" style={{ marginBottom: '20px' }}>
+              <button 
+                type="button" 
+                className={`btn-service-filter ${historySubTab === 'sms' ? 'active' : ''}`}
+                onClick={() => setHistorySubTab('sms')}
+              >
+                📱 SMS Number Rentals ({orders.length})
+              </button>
+              <button 
+                type="button" 
+                className={`btn-service-filter ${historySubTab === 'logs' ? 'active' : ''}`}
+                onClick={() => setHistorySubTab('logs')}
+              >
+                🔑 Purchased Account Logs ({purchasedLogsList.length})
+              </button>
             </div>
+
+            {historySubTab === 'sms' ? (
+              <div className="dash-table-card">
+                <table className="dash-table">
+                  <thead>
+                    <tr>
+                      <th>ORDER ID</th>
+                      <th>SERVICE</th>
+                      <th>PHONE NUMBER</th>
+                      <th>SMS CODE</th>
+                      <th>COST</th>
+                      <th>STATUS</th>
+                      <th>DATE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="text-center py-6 text-muted">
+                          No previous number orders found.
+                        </td>
+                      </tr>
+                    ) : (
+                      orders.map(order => (
+                        <tr key={order.id}>
+                          <td className="font-mono">#{order.id.toString().slice(-6)}</td>
+                          <td><strong>{order.service_name}</strong></td>
+                          <td className="font-mono">{order.phone_number}</td>
+                          <td className="font-mono">
+                            {order.sms_code ? (
+                              <span className="text-green font-bold">{order.sms_code}</span>
+                            ) : (
+                              <span className="text-muted">-</span>
+                            )}
+                          </td>
+                          <td className="font-mono">${Number(order.cost || 0).toFixed(2)}</td>
+                          <td>
+                            <span className={`status-pill pill-${order.status}`}>
+                              {order.status}
+                            </span>
+                          </td>
+                          <td>{new Date(order.created_at).toLocaleDateString()}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="dash-table-card">
+                <table className="dash-table">
+                  <thead>
+                    <tr>
+                      <th>PLATFORM</th>
+                      <th>USERNAME / UID</th>
+                      <th>PASSWORD</th>
+                      <th>2FA SECRET</th>
+                      <th>MAIL / EMAIL PASS</th>
+                      <th>DEMO PRICE</th>
+                      <th>PURCHASED</th>
+                      <th>ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {purchasedLogsList.length === 0 ? (
+                      <tr>
+                        <td colSpan="8" className="text-center py-6 text-muted">
+                          No account logs purchased yet. 
+                          <button 
+                            className="link-cyan" 
+                            style={{ marginLeft: '8px', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                            onClick={() => setActiveTab('logs')}
+                          >
+                            Explore Account Logs →
+                          </button>
+                        </td>
+                      </tr>
+                    ) : (
+                      purchasedLogsList.map((log) => {
+                        const isPwRevealed = revealedPasswords[log.id];
+                        return (
+                          <tr key={log.id}>
+                            <td><strong>{log.platform}</strong></td>
+                            <td className="font-mono">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>{log.username}</span>
+                                <button 
+                                  className="btn-cell-copy"
+                                  onClick={() => copyToClipboard(log.username, 'Username')}
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                            </td>
+                            <td className="font-mono">
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>{isPwRevealed ? log.password : '••••••••'}</span>
+                                <button 
+                                  className="btn-cell-copy"
+                                  onClick={() => setRevealedPasswords(prev => ({ ...prev, [log.id]: !prev[log.id] }))}
+                                >
+                                  {isPwRevealed ? 'Hide' : 'Show'}
+                                </button>
+                                <button 
+                                  className="btn-cell-copy"
+                                  onClick={() => copyToClipboard(log.password, 'Password')}
+                                >
+                                  Copy
+                                </button>
+                              </div>
+                            </td>
+                            <td className="font-mono" style={{ fontSize: '0.78rem' }}>
+                              {log.twoFactorKey ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {log.twoFactorKey}
+                                  </span>
+                                  <button 
+                                    className="btn-cell-copy"
+                                    onClick={() => copyToClipboard(log.twoFactorKey, '2FA Key')}
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td className="font-mono" style={{ fontSize: '0.78rem' }}>
+                              {log.mail ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {log.mail}
+                                    </span>
+                                    <button 
+                                      className="btn-cell-copy"
+                                      onClick={() => copyToClipboard(log.mail, 'Email')}
+                                    >
+                                      Copy
+                                    </button>
+                                  </div>
+                                  {log.mailPassword && (
+                                    <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span>Pass: {isPwRevealed ? log.mailPassword : '••••••'}</span>
+                                      <button 
+                                        className="btn-cell-copy"
+                                        onClick={() => copyToClipboard(log.mailPassword, 'Mail Pass')}
+                                      >
+                                        Copy
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : '-'}
+                            </td>
+                            <td className="font-mono" style={{ color: '#00e5ff' }}>
+                              ${Number(log.price || 1.50).toFixed(2)}
+                            </td>
+                            <td style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                              {new Date(log.purchasedAt || Date.now()).toLocaleDateString()}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button 
+                                  className="btn-simulate-tiny"
+                                  onClick={() => copyToClipboard(log.comboString, 'Combo String')}
+                                  title="Copy Combo"
+                                >
+                                  📋 Combo
+                                </button>
+                                <button 
+                                  className="btn-cell-copy"
+                                  onClick={() => downloadCredentialsFile(log)}
+                                  title="Download credentials file"
+                                >
+                                  ⬇️ .txt
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 

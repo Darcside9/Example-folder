@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Hero from './components/Hero';
 import HowItWorks from './components/HowItWorks';
 import ServicesSection from './components/ServicesSection';
+import LogsMarketplace from './components/LogsMarketplace';
 import PricingCatalog from './components/PricingCatalog';
 import TrustMetrics from './components/TrustMetrics';
 import FaqSection from './components/FaqSection';
@@ -78,6 +79,13 @@ export default function App() {
                 <TrustMetrics />
                 <HowItWorks />
                 <ServicesSection onSelectService={() => handleOpenOrderModal()} />
+                <LogsMarketplace 
+                  onRequireAuth={() => {
+                    navigate('/auth?mode=signup');
+                    showToast('Please sign up or log in to buy account logs.');
+                  }}
+                  onShowToast={showToast}
+                />
                 <PricingCatalog 
                   onSelectPlan={(plan) => handleOpenOrderModal(plan)}
                   onNotifySoon={(serviceName) => showToast(`You'll be notified when ${serviceName} numbers go live!`)}

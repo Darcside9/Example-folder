@@ -23,4 +23,5 @@
 @import './components/auth-view.css';
 @import './components/user-dashboard.css';
 @import './components/admin-dashboard.css';
+@import './components/logs-marketplace.css';
 @import './components/toast.css';

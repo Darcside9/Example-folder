@@ -45,12 +45,14 @@ export default function Navbar({ onOpenOrderModal }) {
       )}
       {location.pathname === '/' ? (
         <>
+          <a href="#logs-marketplace" onClick={closeMenu}>🔑 Account Logs</a>
           <a href="#services" onClick={closeMenu}>Services</a>
           <a href="#pricing" onClick={closeMenu}>Pricing</a>
           <a href="#faq" onClick={closeMenu}>FAQ</a>
         </>
       ) : (
         <>
+          <Link to="/#logs-marketplace" onClick={closeMenu}>🔑 Account Logs</Link>
           <Link to="/" onClick={closeMenu}>Services</Link>
           <Link to="/" onClick={closeMenu}>Pricing</Link>
           <Link to="/" onClick={closeMenu}>FAQ</Link>

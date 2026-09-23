@@ -23,4 +23,9 @@ export const siteConfig = {
 
   telegramChannel: 'https://t.me/chrisshopper',
   pricingNotice: 'Bulk carrier line allocation is currently active for Telegram and WhatsApp.',
+  
+  // Google Sheets Two-Way Inventory Configuration
+  googleSheetId: '1QmUVQN8FM-gjg_ZvAL3tz6ztQ6Hdg8VskEiUxJJtJNg',
+  googleSheetCsvUrl: 'https://docs.google.com/spreadsheets/d/1QmUVQN8FM-gjg_ZvAL3tz6ztQ6Hdg8VskEiUxJJtJNg/export?format=csv',
+  googleAppsScriptUrl: 'https://script.google.com/macros/s/AKfycbw27CrH7318BU_Ey2W-_ZwU-wJcT6hW5_XTptbk46xBGe6yxlDhD2rNNLQN6DjukwEQAg/exec',
 };

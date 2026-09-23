@@ -14,7 +14,7 @@ export default function Hero({ onOpenOrderModal }) {
         </h1>
 
         <p className="hero-lead">
-          Receive one-time verification codes and rent dedicated non-VoIP carrier phone numbers.
+          Get your Facebook Logs, TikTok Logs, Instagram Logs as well as your numbers for platform verifications.
           Bypass strict security filters on Telegram, WhatsApp, OpenAI, Google, Apple, and 120+ platforms with 99.9% delivery.
         </p>
 
@@ -31,8 +31,12 @@ export default function Hero({ onOpenOrderModal }) {
             </svg>
           </button>
           
-          <a href="#how-it-works" className="btn btn-secondary btn-lg">
-            See How It Works
+          <a href="#logs-marketplace" className="btn btn-secondary btn-lg">
+            <span>🔑 Explore Account Logs</span>
+          </a>
+
+          <a href="#how-it-works" className="btn btn-ghost btn-lg">
+            How It Works
           </a>
         </div>
 
