@@ -35,7 +35,7 @@ export default function TrustMetrics() {
   };
 
   return (
-    <section className="section metrics-trust-section">
+    <section className="section metrics-trust-section reveal-on-scroll">
       {/* Stats Counter Bar */}
       <div className="stats-ticker-grid">
         {statsData.map((stat, idx) => (

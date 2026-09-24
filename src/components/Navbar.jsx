@@ -53,14 +53,23 @@ export default function Navbar({ onOpenOrderModal }) {
       ) : (
         <>
           <Link to="/#logs-marketplace" onClick={closeMenu}>🔑 Account Logs</Link>
-          <Link to="/" onClick={closeMenu}>Services</Link>
-          <Link to="/" onClick={closeMenu}>Pricing</Link>
-          <Link to="/" onClick={closeMenu}>FAQ</Link>
+          <Link to="/#services" onClick={closeMenu}>Services</Link>
+          <Link to="/#pricing" onClick={closeMenu}>Pricing</Link>
+          <Link to="/#faq" onClick={closeMenu}>FAQ</Link>
         </>
       )}
       <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer" onClick={closeMenu}>💬 WhatsApp Support</a>
     </>
   );
+
+  // Close menu on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') closeMenu();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   return (
     <header className="site-header">
@@ -127,7 +136,7 @@ export default function Navbar({ onOpenOrderModal }) {
             </div>
           </>
         ) : (
-          /* Mobile Navigation */
+          /* Mobile Navigation Actions */
           <div className="header-actions">
             {!currentUser && (
               <Link to="/auth?mode=login" className="mobile-header-signin-btn" aria-label="Sign In">Sign In</Link>
@@ -139,46 +148,57 @@ export default function Navbar({ onOpenOrderModal }) {
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
               )}
             </button>
-
-            {/* Mobile Drawer */}
-            <div className={`mobile-drawer ${mobileMenuOpen ? 'open' : ''}`}>
-              <nav className="mobile-nav" aria-label="Mobile navigation">
-                {renderLinks()}
-              </nav>
-              
-              <div className="mobile-drawer-footer">
-                <div className="lang-selector-wrapper-mobile">
-                  <span className="lang-label">Language:</span>
-                  <div className="lang-buttons-row">
-                    {languages.slice(0, 4).map((l) => (
-                      <button key={l} type="button" className={`lang-option-mobile ${lang === l ? 'active' : ''}`} onClick={() => setLang(l)}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-
-                {currentUser ? (
-                  <div className="mobile-user-box">
-                    <div className="mobile-user-info">
-                      <span className="user-email-label">{currentUser.email}</span>
-                      <span className="user-balance-badge">${Number(currentUser.balance || 0).toFixed(2)}</span>
-                    </div>
-                    <div className="mobile-nav-links-grid">
-                      <Link to="/dashboard" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>📊 My Dashboard</Link>
-                      {isAdmin && <Link to="/admin" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>👑 Admin Panel</Link>}
-                    </div>
-                    <button type="button" className="btn btn-ghost btn-sm btn-full text-danger" onClick={() => { closeMenu(); logout(); }}>🚪 Sign Out</button>
-                  </div>
-                ) : (
-                  <div className="mobile-auth-btn-grid">
-                    <Link to="/auth?mode=login" className="btn btn-secondary btn-sm" onClick={closeMenu}>Sign In</Link>
-                    <Link to="/auth?mode=signup" className="btn btn-primary btn-sm" onClick={closeMenu}>Create Account</Link>
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
       </div>
+
+      {/* Mobile Drawer and Backdrop */}
+      {!isDesktop && (
+        <>
+          {mobileMenuOpen && (
+            <div 
+              className="navbar-backdrop" 
+              onClick={closeMenu} 
+              aria-hidden="true" 
+            />
+          )}
+          <div className={`mobile-drawer ${mobileMenuOpen ? 'open' : ''}`}>
+            <nav className="mobile-nav" aria-label="Mobile navigation">
+              {renderLinks()}
+            </nav>
+            
+            <div className="mobile-drawer-footer">
+              <div className="lang-selector-wrapper-mobile">
+                <span className="lang-label">Language:</span>
+                <div className="lang-buttons-row">
+                  {languages.slice(0, 4).map((l) => (
+                    <button key={l} type="button" className={`lang-option-mobile ${lang === l ? 'active' : ''}`} onClick={() => setLang(l)}>{l}</button>
+                  ))}
+                </div>
+              </div>
+
+              {currentUser ? (
+                <div className="mobile-user-box">
+                  <div className="mobile-user-info">
+                    <span className="user-email-label">{currentUser.email}</span>
+                    <span className="user-balance-badge">${Number(currentUser.balance || 0).toFixed(2)}</span>
+                  </div>
+                  <div className="mobile-nav-links-grid">
+                    <Link to="/dashboard" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>📊 My Dashboard</Link>
+                    {isAdmin && <Link to="/admin" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>👑 Admin Panel</Link>}
+                  </div>
+                  <button type="button" className="btn btn-ghost btn-sm btn-full text-danger" onClick={() => { closeMenu(); logout(); }}>🚪 Sign Out</button>
+                </div>
+              ) : (
+                <div className="mobile-auth-btn-grid">
+                  <Link to="/auth?mode=login" className="btn btn-secondary btn-sm" onClick={closeMenu}>Sign In</Link>
+                  <Link to="/auth?mode=signup" className="btn btn-primary btn-sm" onClick={closeMenu}>Create Account</Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </header>
   );
 }

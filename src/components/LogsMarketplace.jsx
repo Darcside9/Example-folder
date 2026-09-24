@@ -163,7 +163,7 @@ export default function LogsMarketplace({
   }, [categories, selectedPlatform, searchQuery]);
 
   return (
-    <section className={`logs-marketplace-section ${isDashboard ? 'in-dashboard' : ''}`} id="logs-marketplace">
+    <section className={`logs-marketplace-section ${isDashboard ? 'in-dashboard' : 'reveal-on-scroll'}`} id="logs-marketplace">
       {/* Header Area */}
       {!isDashboard && (
         <div className="logs-header-area">

@@ -3,32 +3,45 @@
    ========================================================================== */
 
 /* 2C.1 Set body font, line-height, and background using variables */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   font-family: var(--font-primary);
   line-height: 1.6;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   background: 
-    radial-gradient(ellipse 80% 45% at 50% -10%, rgba(56, 189, 248, 0.12), transparent),
-    radial-gradient(ellipse 60% 35% at 100% 35%, rgba(99, 102, 241, 0.08), transparent),
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 189, 248, 0.12), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 100% 30%, rgba(99, 102, 241, 0.08), transparent 70%),
+    radial-gradient(ellipse 50% 35% at 0% 70%, rgba(56, 189, 248, 0.05), transparent 70%),
     var(--bg-primary);
   background-attachment: fixed;
+  overflow-x: hidden;
 }
 
-/* 2C.2 Style headings with fluid clamp sizes */
+/* 2C.2 Style headings with display font and fluid clamp sizes */
 h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
   font-weight: 800;
-  line-height: 1.18;
-  letter-spacing: -0.02em;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
   margin-bottom: var(--space-md);
+  color: #ffffff;
 }
 
-h1 { font-size: var(--text-4xl); }
-h2 { font-size: var(--text-3xl); }
-h3 { font-size: var(--text-2xl); }
-h4 { font-size: var(--text-xl); }
-h5 { font-size: var(--text-lg); }
-h6 { font-size: var(--text-base); }
+h1 { font-size: var(--text-4xl); font-weight: 900; letter-spacing: -0.035em; }
+h2 { font-size: var(--text-3xl); font-weight: 800; letter-spacing: -0.03em; }
+h3 { font-size: var(--text-2xl); font-weight: 700; letter-spacing: -0.02em; }
+h4 { font-size: var(--text-xl); font-weight: 700; }
+h5 { font-size: var(--text-lg); font-weight: 600; }
+h6 { font-size: var(--text-base); font-weight: 600; }
+
+button, a, input, select, textarea {
+  touch-action: manipulation;
+}
 
 /* 2C.3 Style links with default + hover states */
 a {

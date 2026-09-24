@@ -412,8 +412,36 @@ export default function UserDashboard({ user, onSignOut }) {
     }
   };
 
+  // Lock scroll when mobile sidebar is open
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [sidebarOpen]);
+
+  // Close sidebar on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <div className="mtel-dashboard-layout">
+      {/* Mobile Sidebar Dimming Backdrop */}
+      {sidebarOpen && (
+        <div 
+          className="dashboard-sidebar-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* ====================================================================
           SIDEBAR NAVIGATION (MTELSMS EXACT ARCHITECTURE)
           ==================================================================== */}

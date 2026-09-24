@@ -6,13 +6,13 @@
 .section-hero {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 36px;
   align-items: center;
-  padding: 32px 16px;
+  padding: clamp(32px, 6vw, 64px) 16px;
   width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
   text-align: center;
+  position: relative;
 }
 
 .hero-copy {
@@ -20,6 +20,7 @@
   flex-direction: column;
   align-items: center;
   width: 100%;
+  max-width: 640px;
 }
 
 .hero-badge-pill {

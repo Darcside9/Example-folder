@@ -27,7 +27,7 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
   const activeCount = pricingPlans.filter((p) => p.isActive).length;
 
   return (
-    <section id="pricing" className="section pricing-section">
+    <section id="pricing" className="section pricing-section reveal-on-scroll">
       <div className="section-heading text-center">
         <span className="eyebrow">Service Catalog & Rates</span>
         <h2>SMS Verification Pricing</h2>
@@ -109,7 +109,7 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
           {filteredPlans.map((plan) => (
             <article 
               key={plan.id} 
-              className={`pricing-card ${plan.isActive ? 'pricing-card-active' : 'pricing-card-soon'}`}
+              className={`pricing-card card-interactive ${plan.isActive ? 'pricing-card-active' : 'pricing-card-soon'}`}
             >
               <div className="pricing-card-top">
                 <div className="pricing-title-group">

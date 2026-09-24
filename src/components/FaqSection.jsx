@@ -9,7 +9,7 @@ export default function FaqSection() {
   };
 
   return (
-    <section id="faq" className="section faq-section">
+    <section id="faq" className="section faq-section reveal-on-scroll">
       <div className="section-heading text-center">
         <span className="eyebrow">Got Questions?</span>
         <h2>Frequently Asked Questions</h2>

@@ -235,16 +235,27 @@
 .panel-footer-ticker {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   border-top: 1px solid var(--border-subtle);
-  padding-top: 12px;
+  padding-top: 14px;
 }
 .footer-ticker-item {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+@media (min-width: 640px) {
+  .panel-footer-ticker {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
 }
 
 @media (min-width: 768px) {
@@ -255,16 +266,12 @@
 
   .hero-panel {
     padding: 24px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6), var(--glow-cyan);
   }
 
   .terminal-controls {
     flex-direction: row;
     align-items: center;
     gap: 12px;
-  }
-  
-  .panel-footer-ticker {
-    flex-direction: row;
-    justify-content: space-between;
   }
 }

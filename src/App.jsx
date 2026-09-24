@@ -17,6 +17,7 @@ import AdminDashboard from './components/AdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 import { useAuth } from './lib/AuthContext';
+import { useScrollReveal } from './hooks/useScrollReveal';
 
 export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,6 +26,9 @@ export default function App() {
   const { currentUser, logout, refreshUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Initialize smooth scroll reveal animations across page routes
+  useScrollReveal(location.pathname);
 
   const isWorkstation = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/admin');
 

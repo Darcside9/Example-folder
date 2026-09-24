@@ -2,7 +2,7 @@ import LiveTerminalDemo from './LiveTerminalDemo';
 
 export default function Hero({ onOpenOrderModal }) {
   return (
-    <section className="hero section-hero">
+    <section className="hero section-hero reveal-on-scroll">
       <div className="hero-copy">
         <div className="hero-badge-pill">
           <span className="pulse-indicator" />

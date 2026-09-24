@@ -4,17 +4,25 @@
 
 :root {
   color-scheme: dark;
-  --font-primary: 'Inter', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-primary: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* 2B.1 Colors */
+  /* 2B.1 Colors & Elevated Surfaces */
   --bg-primary: #060b19;
   --bg-secondary: #090e1f;
   --bg-elevated: #0d152a;
+  --bg-main: #060b19;
+  --bg-surface: #0a1128;
+  --bg-surface-elevated: #0f1838;
+  --bg-terminal: #070c1e;
   
   --glass-bg: rgba(13, 22, 44, 0.72);
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-border-hover: rgba(255, 255, 255, 0.16);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(56, 189, 248, 0.35);
+  --border-focus: #38bdf8;
 
   --accent-cyan: #38bdf8;
   --accent-magenta: #d946ef;
@@ -22,12 +30,13 @@
   --accent-blue: #3b82f6;
   --accent-indigo: #6366f1;
   --accent-yellow: #facc15;
+  --accent-orange: #f97316;
   --accent-red: #f87171;
 
   --text-primary: #f8fafc;
   --text-muted: rgba(148, 163, 184, 0.7);
   --text-inverse: #030712;
-  --text-secondary: rgba(226, 232, 240, 0.82);
+  --text-secondary: rgba(226, 232, 240, 0.85);
 
   /* 2B.2 Spacing scale (4px base) */
   --space-xs: 4px;
@@ -38,7 +47,7 @@
   --space-2xl: 48px;
   --space-3xl: 64px;
 
-  /* 2B.3 Fluid typography */
+  /* 2B.3 Fluid typography (Strict Mobile-First) */
   --text-xs: clamp(0.75rem, 0.8vw, 0.875rem);
   --text-sm: clamp(0.875rem, 1vw, 1rem);
   --text-base: clamp(1rem, 1.2vw, 1.125rem);
@@ -46,12 +55,14 @@
   --text-xl: clamp(1.25rem, 2vw, 1.5rem);
   --text-2xl: clamp(1.5rem, 2.5vw, 2rem);
   --text-3xl: clamp(1.8rem, 3.2vw, 2.75rem);
-  --text-4xl: clamp(2.5rem, 4vw, 3.5rem);
+  --text-4xl: clamp(2.3rem, 5vw, 3.8rem);
 
   /* 2B.4 Border radii */
+  --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
   --radius-full: 9999px;
 
   /* 2B.5 z-index scale */
@@ -60,16 +71,25 @@
   --z-modal: 1000;
   --z-toast: 9999;
 
+  /* 2B.6 Motion & Transitions */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-bounce: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+
   /* 2B.7 Shadow & glow */
-  --glow-primary: 0 0 30px rgba(56, 189, 248, 0.2);
+  --glow-primary: 0 0 30px rgba(56, 189, 248, 0.25);
+  --glow-cyan: 0 0 25px rgba(56, 189, 248, 0.3);
+  --glow-green: 0 0 25px rgba(74, 222, 128, 0.3);
   --glow-btn: 0 8px 24px rgba(37, 99, 235, 0.35);
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-card: 0 8px 30px rgba(0, 0, 0, 0.5), 0 0 1px 1px rgba(255, 255, 255, 0.06);
+  --shadow-modal: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
-/* 2B.6 Breakpoints (documented here)
-   Mobile: 320-639px (default, no media query)
+/* 2B.8 Breakpoints
+   Mobile: 320-639px (default, touch-first)
    Tablet: 640px+ (@media (min-width: 640px))
    Desktop: 1024px+ (@media (min-width: 1024px))
    Wide: 1440px+ (@media (min-width: 1440px))

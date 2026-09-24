@@ -40,7 +40,7 @@ export default function HowItWorks() {
   ];
 
   return (
-    <section id="how-it-works" className="section how-it-works-section">
+    <section id="how-it-works" className="section how-it-works-section reveal-on-scroll">
       <div className="section-heading text-center">
         <span className="eyebrow">Seamless 3-Step Process</span>
         <h2>How Chris Shopper Works</h2>
@@ -49,7 +49,7 @@ export default function HowItWorks() {
 
       <div className="steps-grid">
         {steps.map((step) => (
-          <div key={step.num} className="step-card">
+          <div key={step.num} className="step-card card-interactive">
             <div className="step-card-top">
               <span className="step-number">{step.num}</span>
               <span className="step-tag">{step.tag}</span>

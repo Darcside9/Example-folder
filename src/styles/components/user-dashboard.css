@@ -11,21 +11,33 @@
   position: relative;
 }
 
+/* Sidebar Dimming Backdrop for Mobile */
+.dashboard-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 7, 18, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1040;
+  animation: fadeIn 0.2s ease forwards;
+}
+
 /* Sidebar */
 .mtel-sidebar {
   position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
-  width: 260px;
-  background: var(--bg-surface-elevated);
+  width: min(280px, 80vw);
+  background: #090f22;
   border-right: 1px solid var(--border-subtle);
   transform: translateX(-100%);
-  transition: transform var(--transition-normal);
-  z-index: 1000;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1050;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  box-shadow: 12px 0 40px rgba(0, 0, 0, 0.7);
 }
 
 .mtel-sidebar.sidebar-mobile-open {
@@ -183,8 +195,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px;
-  background: var(--bg-surface-elevated);
+  padding: 12px 16px;
+  background: rgba(8, 14, 32, 0.98);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-bottom: 1px solid var(--border-subtle);
   position: sticky;
   top: 0;
@@ -192,26 +206,42 @@
 }
 
 .mobile-hamburger-btn {
-  background: transparent;
-  border: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
   color: var(--text-primary);
-  padding: 4px;
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.mobile-hamburger-btn:active {
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .mobile-brand-title {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .mobile-balance-pill {
-  background: rgba(56, 189, 248, 0.1);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.25);
   color: var(--accent-cyan);
-  padding: 6px 12px;
+  padding: 8px 14px;
   border-radius: var(--radius-full);
-  font-size: 0.85rem;
-  font-weight: 600;
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Dashboard Two Col Grid (Receive SMS) */
@@ -335,6 +365,8 @@
 .services-table-wrapper,
 .rentals-table-wrapper {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .services-catalog-table,

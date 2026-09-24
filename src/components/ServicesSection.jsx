@@ -38,7 +38,7 @@ export default function ServicesSection({ onSelectService }) {
   };
 
   return (
-    <section id="services" className="section services-section">
+    <section id="services" className="section services-section reveal-on-scroll">
       <div className="section-heading">
         <span className="eyebrow">Carrier Solutions</span>
         <h2>Enterprise & Retail SMS Services</h2>
@@ -51,7 +51,7 @@ export default function ServicesSection({ onSelectService }) {
         {services.map((service) => (
           <article
             key={service.id}
-            className={`service-card ${service.popular ? 'featured-service' : ''}`}
+            className={`service-card card-interactive ${service.popular ? 'featured-service' : ''}`}
           >
             {service.popular && <span className="featured-badge">Most Popular</span>}
             <div className="service-header">
