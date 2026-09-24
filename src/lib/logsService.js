@@ -144,15 +144,17 @@ export async function fetchLiveLogs() {
   let sheetRows = [];
 
   try {
-    const cacheBuster = `_t=${Date.now()}`;
-    const url = siteConfig.googleSheetCsvUrl.includes('?') 
-      ? `${siteConfig.googleSheetCsvUrl}&${cacheBuster}`
-      : `${siteConfig.googleSheetCsvUrl}?${cacheBuster}`;
+    if (siteConfig.googleSheetCsvUrl) {
+      const cacheBuster = `_t=${Date.now()}`;
+      const url = siteConfig.googleSheetCsvUrl.includes('?') 
+        ? `${siteConfig.googleSheetCsvUrl}&${cacheBuster}`
+        : `${siteConfig.googleSheetCsvUrl}?${cacheBuster}`;
 
-    const response = await fetch(url);
-    if (response.ok) {
-      const text = await response.text();
-      sheetRows = parseCsv(text);
+      const response = await fetch(url);
+      if (response.ok) {
+        const text = await response.text();
+        sheetRows = parseCsv(text);
+      }
     }
   } catch (err) {
     console.warn('Could not fetch live Google Sheet, using fallback catalog:', err);

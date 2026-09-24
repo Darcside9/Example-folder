@@ -6,10 +6,8 @@ export default function SupportSection() {
 
   const handleWhatsAppSend = (e) => {
     e.preventDefault();
-    const text = encodeURIComponent(
-      `Hello Chris Shopper Support!\n\nName: ${formState.name || 'Customer'}\nService Needed: ${formState.service || 'Bulk Carrier Numbers'}\nDetails: ${formState.details || 'Inquiry regarding SMS verification.'}`
-    );
-    window.open(`https://wa.me/1234567890?text=${text}`, '_blank');
+    const rawMessage = `Hello Chris Shopper Support!\n\nName: ${formState.name || 'Customer'}\nService Needed: ${formState.service || 'Bulk Carrier Numbers'}\nDetails: ${formState.details || 'Inquiry regarding SMS verification.'}`;
+    window.open(siteConfig.getWhatsAppSupportUrl(rawMessage), '_blank');
   };
 
   return (

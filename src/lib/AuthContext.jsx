@@ -47,7 +47,11 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const isAdmin = currentUser?.is_admin || currentUser?.email === 'darcside999@gmail.com';
+  const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || '';
+  const isAdmin = Boolean(
+    currentUser?.is_admin || 
+    (adminEmail && currentUser?.email && currentUser.email.toLowerCase() === adminEmail.toLowerCase())
+  );
 
   return (
     <AuthContext.Provider value={{ currentUser, isLoading, login, logout, refreshUser, isAdmin }}>
