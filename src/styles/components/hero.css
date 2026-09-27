@@ -55,11 +55,11 @@
 
 .hero h1,
 .section-hero h1 {
-  font-size: 2.2rem;
-  font-weight: 800;
-  line-height: 1.15;
-  letter-spacing: -0.02em;
-  margin-bottom: 16px;
+  font-size: clamp(2.4rem, 7.5vw, 3.2rem);
+  font-weight: 850;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  margin-bottom: 18px;
 }
 
 .text-gradient {
@@ -121,7 +121,8 @@
   
   .hero-copy {
     align-items: flex-start;
-    flex: 1.1;
+    flex: 1.25;
+    max-width: 760px;
   }
   
   .hero-actions {
@@ -139,11 +140,15 @@
 
   .hero h1,
   .section-hero h1 {
-    font-size: 3.8rem;
+    font-size: clamp(3.8rem, 5.2vw, 4.6rem);
+    line-height: 1.08;
+    letter-spacing: -0.035em;
   }
 
   .hero-lead {
-    font-size: 1.1rem;
+    font-size: 1.15rem;
+    line-height: 1.65;
     padding: 0;
+    max-width: 680px;
   }
 }

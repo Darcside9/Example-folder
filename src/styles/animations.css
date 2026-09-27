@@ -64,6 +64,17 @@
       background-position: 200% 0;
     }
   }
+
+  @keyframes hintPulse {
+    0%, 100% {
+      opacity: 0.85;
+      transform: translateX(0);
+    }
+    50% {
+      opacity: 1;
+      transform: translateX(4px);
+    }
+  }
 }
 
 /* ==========================================================================

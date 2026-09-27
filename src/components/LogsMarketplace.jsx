@@ -1,17 +1,74 @@
 // ==========================================================================
-// CHRIS SHOPPER — LOGS MARKETPLACE COMPONENT (ACCSZONE.COM MODEL)
+// CHRIS SHOPPER — LOGS MARKETPLACE COMPONENT (ACCSZONE 2-TIER MODEL + BTS MODAL)
 // ==========================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   fetchLiveLogs, 
   getPlatformsCatalog, 
-  dispenseLogChronological,
-  downloadCredentialsFile,
-  exportCredentialsAsText
+  dispenseSpecificAccountLog,
+  downloadCredentialsFile
 } from '../lib/logsService';
 import { useAuth } from '../lib/AuthContext';
 import { siteConfig } from '../data/siteConfig';
+
+// Helper for rendering SVG brand icons
+function PlatformBrandIcon({ platformId, size = 20, className = '' }) {
+  const p = (platformId || '').toLowerCase();
+
+  if (p === 'facebook') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="Facebook">
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+      </svg>
+    );
+  }
+
+  if (p === 'tiktok') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="TikTok">
+        <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.24 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
+      </svg>
+    );
+  }
+
+  if (p === 'instagram') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-label="Instagram">
+        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
+        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
+        <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
+      </svg>
+    );
+  }
+
+  if (p === 'twitter') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="Twitter">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+      </svg>
+    );
+  }
+
+  if (p === 'textplus') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-label="Textplus">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <line x1="12" y1="8" x2="12" y2="14"/>
+        <line x1="9" y1="11" x2="15" y2="11"/>
+      </svg>
+    );
+  }
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+      <circle cx="8" cy="15" r="4"/>
+      <path d="M10.85 12.15L19 4"/>
+      <path d="M18 5l2 2"/>
+      <path d="M15 8l2 2"/>
+    </svg>
+  );
+}
 
 export default function LogsMarketplace({ 
   onRequireAuth, 
@@ -21,20 +78,28 @@ export default function LogsMarketplace({
 }) {
   const { currentUser, refreshUser } = useAuth();
   
-  const [logs, setLogs] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedPlatform, setSelectedPlatform] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Modals
-  const [confirmModal, setConfirmModal] = useState({
+  // Accordion state: by default, Facebook is open
+  const [expandedCategories, setExpandedCategories] = useState({
+    facebook: true,
+  });
+
+  // Account Log Selection Modal (Step 1: Choose Username from sanitized inventory)
+  const [accountSelectModal, setAccountSelectModal] = useState({
     isOpen: false,
-    platform: null,
+    category: null,
+    subType: null,
+    selectedUsername: null,
+    searchFilter: '',
     loading: false,
     error: null,
   });
 
+  // Credentials Delivery Modal (Step 2: Revealed ONLY after verified payment)
   const [deliveryModal, setDeliveryModal] = useState({
     isOpen: false,
     credential: null,
@@ -43,12 +108,11 @@ export default function LogsMarketplace({
     copiedField: null,
   });
 
-  // Fetch live inventory
+  // Fetch sanitized inventory catalog from live Google Sheet
   const loadInventory = async () => {
     setLoading(true);
     try {
       const liveLogs = await fetchLiveLogs();
-      setLogs(liveLogs);
       const catalog = getPlatformsCatalog(liveLogs);
       setCategories(catalog);
     } catch (err) {
@@ -77,50 +141,76 @@ export default function LogsMarketplace({
     }, 2000);
   };
 
-  const handleOpenBuy = (cat) => {
+  const toggleCategory = (categoryId) => {
+    setExpandedCategories(prev => ({
+      ...prev,
+      [categoryId]: !prev[categoryId]
+    }));
+  };
+
+  // Open the Account Log Selection Modal for a specific sub-type
+  const handleOpenAccountSelect = (category, subType) => {
     if (!currentUser) {
       if (onRequireAuth) {
         onRequireAuth();
       } else {
-        toast('Please log in or create an account to purchase logs.');
+        toast('Please sign in or create an account to browse and buy account logs.');
       }
       return;
     }
 
-    if (cat.inStock <= 0) {
-      toast(`${cat.name} logs are currently Out of Stock! Check back soon.`);
-      return;
-    }
+    const availableAccounts = (subType.accounts || []).filter(a => a.isAvailable);
 
-    setConfirmModal({
+    setAccountSelectModal({
       isOpen: true,
-      platform: cat,
+      category,
+      subType,
+      selectedUsername: availableAccounts[0]?.username || null,
+      searchFilter: '',
       loading: false,
       error: null,
     });
   };
 
-  const handleConfirmPurchase = async () => {
-    if (!confirmModal.platform || !currentUser) return;
-    
-    setConfirmModal(prev => ({ ...prev, loading: true, error: null }));
+  // Confirm Purchase of the Selected Username
+  const handleConfirmAccountPurchase = async () => {
+    if (!accountSelectModal.selectedUsername || !currentUser) return;
+
+    setAccountSelectModal(prev => ({ ...prev, loading: true, error: null }));
 
     try {
       const balance = Number(currentUser.balance || 0);
-      const result = await dispenseLogChronological({
-        platformId: confirmModal.platform.id,
+      const targetCategory = accountSelectModal.category;
+      const targetSubType = accountSelectModal.subType;
+      const price = Number(targetCategory?.demoPrice || 1.50);
+
+      const result = await dispenseSpecificAccountLog({
+        username: accountSelectModal.selectedUsername,
+        platformId: targetCategory.id,
+        subTypeId: targetSubType.id,
         userId: currentUser.id,
         userEmail: currentUser.email,
         currentBalance: balance,
+        price,
       });
 
-      // Refresh user balance in context
+      // Refresh balance in auth context
       if (refreshUser) {
         await refreshUser();
       }
 
-      // Close confirmation and show delivery
-      setConfirmModal({ isOpen: false, platform: null, loading: false, error: null });
+      // Close selection modal
+      setAccountSelectModal({
+        isOpen: false,
+        category: null,
+        subType: null,
+        selectedUsername: null,
+        searchFilter: '',
+        loading: false,
+        error: null,
+      });
+
+      // Open credentials delivery modal with full credentials
       setDeliveryModal({
         isOpen: true,
         credential: result.credential,
@@ -129,21 +219,25 @@ export default function LogsMarketplace({
         copiedField: null,
       });
 
-      toast(`🎉 Successfully purchased ${result.credential.platform} Account Log!`);
+      toast(`🎉 Successfully purchased ${result.credential.platform} Account (@${result.credential.username})!`);
 
       if (onPurchaseComplete) {
         onPurchaseComplete(result.credential);
       }
 
-      // Reload live inventory
+      // Reload live inventory to reflect newly sold item
       await loadInventory();
     } catch (err) {
       console.error('Purchase error:', err);
-      setConfirmModal(prev => ({ ...prev, loading: false, error: err.message || 'Purchase failed.' }));
+      setAccountSelectModal(prev => ({
+        ...prev,
+        loading: false,
+        error: err.message || 'Purchase failed.'
+      }));
     }
   };
 
-  // Filtered platforms
+  // Filtered categories
   const filteredCatalog = useMemo(() => {
     return categories
       .filter(cat => cat.id !== 'all')
@@ -153,14 +247,36 @@ export default function LogsMarketplace({
         }
         if (searchQuery.trim()) {
           const q = searchQuery.toLowerCase();
-          const matchName = cat.name.toLowerCase().includes(q);
-          const matchDesc = (cat.description || '').toLowerCase().includes(q);
-          const matchFeatures = (cat.features || []).some(f => f.toLowerCase().includes(q));
-          return matchName || matchDesc || matchFeatures;
+          const matchName = (cat.name || '').toLowerCase().includes(q);
+          const matchSubtitle = (cat.subtitle || '').toLowerCase().includes(q);
+          const matchItems = (cat.items || []).some(item => 
+            (item.title || '').toLowerCase().includes(q)
+          );
+          return matchName || matchSubtitle || matchItems;
         }
         return true;
       });
   }, [categories, selectedPlatform, searchQuery]);
+
+  // Auto-expand category if a search matches
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const openMap = {};
+      categories.forEach(cat => {
+        openMap[cat.id] = true;
+      });
+      setExpandedCategories(openMap);
+    }
+  }, [searchQuery, categories]);
+
+  // Compute available accounts for the active selection modal
+  const modalAvailableAccounts = useMemo(() => {
+    if (!accountSelectModal.subType) return [];
+    const accounts = accountSelectModal.subType.accounts || [];
+    if (!accountSelectModal.searchFilter.trim()) return accounts;
+    const filter = accountSelectModal.searchFilter.toLowerCase();
+    return accounts.filter(acc => acc.username.toLowerCase().includes(filter));
+  }, [accountSelectModal.subType, accountSelectModal.searchFilter]);
 
   return (
     <section className={`logs-marketplace-section ${isDashboard ? 'in-dashboard' : 'reveal-on-scroll'}`} id="logs-marketplace">
@@ -169,190 +285,377 @@ export default function LogsMarketplace({
         <div className="logs-header-area">
           <div className="logs-badge-pill">
             <span className="logs-live-dot" />
-            <span>Google Sheets Live Inventory Two-Way Sync</span>
+            <span>Verified Aged Accounts • 2FA &amp; Mail Access</span>
           </div>
           <h2 className="logs-header-title">
-            Social & Platform <span className="text-gradient">Account Logs</span>
+            Social &amp; Platform <span className="text-gradient">Account Logs</span>
           </h2>
           <p className="logs-header-desc">
-            Aged and phone-verified account credentials with 2FA authenticator secrets, email access, and instant automated FIFO delivery.
+            Aged profiles with 2FA authenticator secrets and full email access. Select an account category to choose your preferred username prior to checkout.
           </p>
         </div>
       )}
 
-      {/* Demo Pricing Notice Banner */}
-      <div className="logs-demo-banner">
-        <div className="logs-demo-banner-content">
-          <span className="logs-demo-tag">DEMO PRICING ACTIVE</span>
-          <span>
-            Account log listings are currently configured with <strong>indicative demo pricing ($1.00 - $1.50)</strong> for checkout and instant FIFO credential delivery verification.
-          </span>
+      {/* =========================================================================
+          AUTH GUARD FOR STRAY VISITORS (MEMBERS-ONLY ACCESS)
+          ========================================================================= */}
+      {!currentUser && !isDashboard ? (
+        <div className="members-only-gate">
+          <div className="gate-glow-halo" />
+          <div className="gate-card-box">
+            <div className="gate-icon-badge">
+              <span className="gate-lock-icon">🔒</span>
+            </div>
+            <h3 className="gate-title">Members-Only Account Logs Access</h3>
+            <p className="gate-desc">
+              Browsing live account inventory, previewing available usernames, and purchasing 2FA-secured profiles is exclusively available to registered Chris Shopper members.
+            </p>
+            <div className="gate-perks-list">
+              <div className="gate-perk-item">
+                <span className="gate-check">✓</span>
+                <span>Aged &amp; Verified Facebook, TikTok, Instagram, Twitter &amp; Textplus accounts</span>
+              </div>
+              <div className="gate-perk-item">
+                <span className="gate-check">✓</span>
+                <span>Preview and choose your preferred username prior to checkout</span>
+              </div>
+              <div className="gate-perk-item">
+                <span className="gate-check">✓</span>
+                <span>Instant automated FIFO delivery with 2FA secret keys &amp; full email access</span>
+              </div>
+            </div>
+            <div className="gate-actions-row">
+              <button
+                type="button"
+                className="btn btn-primary btn-lg"
+                onClick={() => {
+                  if (onRequireAuth) onRequireAuth();
+                }}
+              >
+                <span>Create Free Account</span>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-lg"
+                onClick={() => {
+                  if (onRequireAuth) onRequireAuth();
+                }}
+              >
+                Sign In to Existing Account
+              </button>
+            </div>
+          </div>
         </div>
-        <button 
-          className="btn-mini-copy" 
-          onClick={loadInventory}
-          title="Refresh inventory from Google Sheet"
+      ) : (
+        /* =========================================================================
+           AUTHENTICATED MEMBERS CATALOG VIEW
+           ========================================================================= */
+        <>
+          {/* Filter and Search Controls */}
+          <div className="logs-controls-bar">
+            <div className="logs-platform-pills">
+              <button
+                type="button"
+                className={`logs-platform-pill ${selectedPlatform === 'all' ? 'active' : ''}`}
+                onClick={() => setSelectedPlatform('all')}
+              >
+                <span>🌐</span>
+                <span>All Platforms</span>
+              </button>
+
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`logs-platform-pill ${selectedPlatform === cat.id ? 'active' : ''}`}
+                  onClick={() => setSelectedPlatform(cat.id)}
+                >
+                  <PlatformBrandIcon platformId={cat.id} size={16} className="pill-brand-icon" />
+                  <span>{cat.name.replace(' Accounts', '')}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="logs-search-wrapper">
+              <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input
+                type="text"
+                className="logs-search-input"
+                placeholder="Search account specs, 2FA, years..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {/* AccsZone 2-Tier Catalog Container */}
+          <div className="accszone-container">
+            {loading && categories.length === 0 ? (
+              <div className="accszone-loading">
+                <span className="waiting-dot-pulse mr-2" /> Syncing live catalog from Google Sheets...
+              </div>
+            ) : filteredCatalog.length === 0 ? (
+              <div className="accszone-empty-search">
+                No account categories found matching "{searchQuery}".
+              </div>
+            ) : (
+              filteredCatalog.map(cat => {
+                const isExpanded = !!expandedCategories[cat.id];
+                const hasItems = Array.isArray(cat.items) && cat.items.length > 0;
+                const headerTitle = cat.subtitle ? `${cat.name} - ${cat.subtitle}` : cat.name;
+
+                return (
+                  <div key={cat.id} className="accszone-category-block">
+                    {/* TIER 1: Main Category Header Banner */}
+                    <button
+                      type="button"
+                      id={`accszone-header-${cat.id}`}
+                      aria-controls={`accszone-dropdown-${cat.id}`}
+                      className={`accszone-category-header ${isExpanded ? 'is-expanded' : ''}`}
+                      onClick={() => toggleCategory(cat.id)}
+                      aria-expanded={isExpanded}
+                    >
+                      <div className="accszone-cat-info">
+                        <div 
+                          className="accszone-cat-icon-badge"
+                          style={{ backgroundColor: cat.color || '#1877f2' }}
+                        >
+                          <PlatformBrandIcon platformId={cat.id} size={20} className="text-white" />
+                        </div>
+                        <div className="accszone-cat-titles">
+                          <span className="accszone-cat-title">{headerTitle}</span>
+                        </div>
+                      </div>
+
+                      <div className="accszone-cat-meta">
+                        <span className="accszone-cat-badge">
+                          {hasItems ? `${cat.items.length} Configurations` : 'Catalog Synced'}
+                        </span>
+                        <span className={`accszone-chevron ${isExpanded ? 'open' : ''}`}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                            <polyline points="6 9 12 15 18 9"/>
+                          </svg>
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* TIER 2: List of Account Types Directly Underneath (Fluid Grid Accordion) */}
+                    <div 
+                      className={`accszone-items-collapse ${isExpanded ? 'is-open' : ''}`}
+                      id={`accszone-dropdown-${cat.id}`}
+                      role="region"
+                      aria-labelledby={`accszone-header-${cat.id}`}
+                      aria-hidden={!isExpanded}
+                    >
+                      <div className="accszone-items-inner">
+                        <div className="accszone-items-list">
+                          {hasItems ? (
+                            (() => {
+                              const q = searchQuery.trim().toLowerCase();
+                              const matchCat = (cat.name || '').toLowerCase().includes(q) || (cat.subtitle || '').toLowerCase().includes(q);
+                              const displayItems = q && !matchCat 
+                                ? cat.items.filter(item => (item.title || '').toLowerCase().includes(q))
+                                : cat.items;
+
+                              if (displayItems.length === 0) {
+                                return (
+                                  <div className="accszone-empty-items">
+                                    <span className="accszone-empty-dot" />
+                                    <span>No configurations in {cat.name} match "{searchQuery}".</span>
+                                  </div>
+                                );
+                              }
+
+                              return displayItems.map((item, idx) => (
+                                <div 
+                                  key={item.id || idx} 
+                                  className="accszone-item-row is-clickable"
+                                  onClick={() => handleOpenAccountSelect(cat, item)}
+                                  role="button"
+                                  tabIndex={0}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                      e.preventDefault();
+                                      handleOpenAccountSelect(cat, item);
+                                    }
+                                  }}
+                                  title={`Click to view available ${cat.name} usernames`}
+                                >
+                                  {/* Top / Left Section: Icon & Full Description */}
+                                  <div className="accszone-item-main">
+                                    <div 
+                                      className="accszone-item-icon-box"
+                                      style={{ backgroundColor: cat.color || '#1877f2' }}
+                                    >
+                                      <PlatformBrandIcon platformId={cat.id} size={18} className="text-white" />
+                                    </div>
+
+                                    <div className="accszone-item-content">
+                                      <span className="accszone-item-title">
+                                        {item.title}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Bottom / Right Section: Status Tag & CTA Button */}
+                                  <div className="accszone-item-status-col">
+                                    <span className="accszone-item-tag">
+                                      ✓ 2FA + Mail Access
+                                    </span>
+                                    <span className="accszone-choose-btn">
+                                      Choose Username →
+                                    </span>
+                                  </div>
+                                </div>
+                              ));
+                            })()
+                          ) : (
+                            <div className="accszone-empty-items">
+                              <span className="accszone-empty-dot" />
+                              <span>Specific account configurations for {cat.name} are currently being finalized with verified client inventory.</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
+
+      {/* =========================================================================
+          STEP 1: ACCOUNT LOG SELECTION MODAL (SANITIZED USERNAME PREVIEW)
+          ========================================================================= */}
+      {accountSelectModal.isOpen && accountSelectModal.subType && (
+        <div 
+          className="logs-modal-overlay" 
+          onClick={() => !accountSelectModal.loading && setAccountSelectModal(prev => ({ ...prev, isOpen: false }))}
         >
-          {loading ? 'Syncing...' : '🔄 Live Sync'}
-        </button>
-      </div>
-
-      {/* Filter and Search Controls */}
-      <div className="logs-controls-bar">
-        <div className="logs-platform-pills">
-          {categories.map(cat => (
-            <button
-              key={cat.id}
-              type="button"
-              className={`logs-platform-pill ${selectedPlatform === cat.id ? 'active' : ''}`}
-              onClick={() => setSelectedPlatform(cat.id)}
-            >
-              <span>{cat.icon}</span>
-              <span>{cat.name}</span>
-              <span className="logs-pill-count">{cat.inStock}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="logs-search-wrapper">
-          <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <circle cx="11" cy="11" r="8"/>
-            <path d="M21 21l-4.35-4.35"/>
-          </svg>
-          <input
-            type="text"
-            className="logs-search-input"
-            placeholder="Search platform or specs..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-      </div>
-
-      {/* Marketplace Catalog List */}
-      <div className="logs-catalog-container">
-        {loading && categories.length === 0 ? (
-          <div className="p-8 text-center text-muted">
-            <span className="waiting-dot-pulse mr-2" /> Syncing live catalog from Google Sheets...
-          </div>
-        ) : filteredCatalog.length === 0 ? (
-          <div className="p-8 text-center text-muted">
-            No account logs found matching "{searchQuery}".
-          </div>
-        ) : (
-          filteredCatalog.map(item => {
-            const hasStock = item.inStock > 0;
-            const badgeClass = `badge-${(item.badge || 'verified').toLowerCase()}`;
-
-            return (
-              <div key={item.id} className="logs-card-row">
-                {/* Platform Icon */}
-                <div className="logs-platform-badge">
-                  <div className="logs-platform-icon-wrap" style={{ borderColor: item.color }}>
-                    {item.icon}
-                  </div>
+          <div className="account-select-modal-box" onClick={(e) => e.stopPropagation()}>
+            {/* Modal Header */}
+            <div className="account-select-header">
+              <div className="account-select-header-info">
+                <div 
+                  className="account-select-badge"
+                  style={{ backgroundColor: accountSelectModal.category?.color || '#1877f2' }}
+                >
+                  <PlatformBrandIcon platformId={accountSelectModal.category?.id} size={22} className="text-white" />
                 </div>
-
-                {/* Account Details & Specs */}
-                <div className="logs-details-col">
-                  <div className="logs-title-wrap">
-                    <h3 className="logs-item-title">{item.description || `${item.name} PVA Accounts`}</h3>
-                    {item.badge && (
-                      <span className={`logs-badge-spec ${badgeClass}`}>
-                        {item.badge}
-                      </span>
-                    )}
-                  </div>
-                  <div className="logs-features-chips">
-                    {(item.features || []).map((feat, idx) => (
-                      <span key={idx} className="logs-chip">✓ {feat}</span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* In Stock Count */}
-                <div className="logs-stock-col">
-                  <span className={`stock-count-badge ${hasStock ? 'stock-in' : 'stock-out'}`}>
-                    <span className="stock-dot" />
-                    {hasStock ? `${item.inStock} pcs. in stock` : 'Out of Stock'}
-                  </span>
-                </div>
-
-                {/* Price Display */}
-                <div className="logs-price-col">
-                  <span className="logs-price-val">${Number(item.demoPrice || 1.50).toFixed(2)}</span>
-                  <span className="logs-price-sub">Demo Price</span>
-                </div>
-
-                {/* Action CTA */}
-                <div className="logs-actions-col">
-                  <button
-                    type="button"
-                    className="btn-buy-log"
-                    disabled={!hasStock}
-                    onClick={() => handleOpenBuy(item)}
-                  >
-                    <span>{hasStock ? 'Buy Log 🔑' : 'Sold Out'}</span>
-                  </button>
+                <div>
+                  <h3 className="account-select-title">Choose Account Username</h3>
+                  <p className="account-select-subtitle">
+                    {accountSelectModal.subType.title}
+                  </p>
                 </div>
               </div>
-            );
-          })
-        )}
-      </div>
 
-      {/* CONFIRMATION PURCHASE MODAL */}
-      {confirmModal.isOpen && confirmModal.platform && (
-        <div className="logs-modal-overlay" onClick={() => !confirmModal.loading && setConfirmModal({ isOpen: false, platform: null, loading: false, error: null })}>
-          <div className="logs-modal-box" onClick={(e) => e.stopPropagation()}>
-            <div className="logs-modal-header">
-              <div>
-                <h3 className="logs-modal-title">Confirm Account Log Purchase</h3>
-                <p className="logs-modal-subtitle">
-                  Automated FIFO delivery directly from secure Google Sheets inventory
-                </p>
-              </div>
               <button 
                 type="button" 
                 className="logs-modal-close-btn"
-                disabled={confirmModal.loading}
-                onClick={() => setConfirmModal({ isOpen: false, platform: null, loading: false, error: null })}
+                disabled={accountSelectModal.loading}
+                onClick={() => setAccountSelectModal(prev => ({ ...prev, isOpen: false }))}
+                aria-label="Close"
               >
                 ✕
               </button>
             </div>
 
-            <div className="credentials-display-card">
-              <div className="credential-field-row">
-                <span className="cred-label">Platform</span>
-                <span className="font-bold text-white">{confirmModal.platform.name}</span>
-              </div>
-              <div className="credential-field-row">
-                <span className="cred-label">Item Specs</span>
-                <span className="text-muted text-sm">{confirmModal.platform.description}</span>
-              </div>
-              <div className="credential-field-row">
-                <span className="cred-label">Price (Demo)</span>
-                <span className="logs-price-val">${Number(confirmModal.platform.demoPrice || 1.50).toFixed(2)}</span>
-              </div>
-              <div className="credential-field-row">
-                <span className="cred-label">Your Balance</span>
-                <span className="font-mono text-cyan">${Number(currentUser?.balance || 0).toFixed(2)}</span>
-              </div>
+            {/* Sanitized Security Notice */}
+            <div className="account-select-security-notice">
+              <span className="security-icon">🔒</span>
+              <span>
+                <strong>DevTools Protected:</strong> Passwords, 2FA secret keys, and email access credentials are sanitized and packaged behind-the-scenes strictly upon verified purchase.
+              </span>
             </div>
 
-            <p className="text-xs text-muted leading-relaxed mb-4">
-              🔒 <strong>FIFO Dispense Guarantee:</strong> The system will chronologically dispense the earliest unpurchased row, immediately lock it, and tag it as SOLD in the client's Google Sheet via Apps Script webhook.
-            </p>
+            {/* In-Modal Username Filter */}
+            <div className="account-select-search-wrap">
+              <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="8"/>
+                <path d="M21 21l-4.35-4.35"/>
+              </svg>
+              <input
+                type="text"
+                className="logs-search-input"
+                placeholder="Search usernames in this inventory batch..."
+                value={accountSelectModal.searchFilter}
+                onChange={(e) => setAccountSelectModal(prev => ({ ...prev, searchFilter: e.target.value }))}
+              />
+            </div>
 
-            {confirmModal.error && (
+            {/* Username Selection List */}
+            <div className="account-select-list">
+              {modalAvailableAccounts.length === 0 ? (
+                <div className="account-select-empty">
+                  No accounts found matching "{accountSelectModal.searchFilter}".
+                </div>
+              ) : (
+                modalAvailableAccounts.map((acc, aIdx) => {
+                  const isSelected = accountSelectModal.selectedUsername === acc.username;
+                  const isAvailable = acc.isAvailable;
+
+                  return (
+                    <div
+                      key={acc.id || acc.username || aIdx}
+                      className={`account-select-item ${isSelected ? 'selected' : ''} ${!isAvailable ? 'disabled' : ''}`}
+                      onClick={() => isAvailable && setAccountSelectModal(prev => ({ ...prev, selectedUsername: acc.username }))}
+                    >
+                      <div className="acc-item-left">
+                        <div className={`acc-radio-circle ${isSelected ? 'checked' : ''}`}>
+                          {isSelected && <span className="acc-radio-dot" />}
+                        </div>
+                        <div className="acc-avatar-circle">
+                          👤
+                        </div>
+                        <div className="acc-info-col">
+                          <span className="acc-username-text">@{acc.username}</span>
+                          <span className="acc-platform-sub">{acc.platform} PVA Account Log</span>
+                        </div>
+                      </div>
+
+                      <div className="acc-item-right">
+                        <span className={`stock-status-tag ${isAvailable ? 'tag-available' : 'tag-sold'}`}>
+                          <span className="status-dot" />
+                          {isAvailable ? 'In Stock' : 'Sold'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {accountSelectModal.error && (
               <div className="p-3 bg-red-900/30 border border-red-500/40 rounded-lg text-red-300 text-sm mb-4">
-                ⚠️ {confirmModal.error}
+                ⚠️ {accountSelectModal.error}
               </div>
             )}
 
-            {Number(currentUser?.balance || 0) < Number(confirmModal.platform.demoPrice || 1.50) ? (
-              <div className="delivery-actions-row">
+            {/* Modal Footer / Checkout Bar */}
+            <div className="account-select-footer">
+              <div className="account-select-footer-meta">
+                <div className="footer-selected-line">
+                  <span className="meta-label">Selected Account:</span>
+                  <strong className="text-white">
+                    {accountSelectModal.selectedUsername ? `@${accountSelectModal.selectedUsername}` : 'None selected'}
+                  </strong>
+                </div>
+                <div className="footer-balance-line">
+                  <span className="meta-label">Your Wallet Balance:</span>
+                  <span className="font-mono text-cyan">${Number(currentUser?.balance || 0).toFixed(2)}</span>
+                </div>
+              </div>
+
+              {Number(currentUser?.balance || 0) < Number(accountSelectModal.category?.demoPrice || 1.50) ? (
                 <a 
                   href={siteConfig.getWhatsAppTopUpUrl(10, currentUser?.email)}
                   target="_blank"
@@ -361,46 +664,31 @@ export default function LogsMarketplace({
                 >
                   💬 Top Up via WhatsApp ($10)
                 </a>
-                <button 
-                  type="button"
-                  className="btn-action-secondary"
-                  onClick={() => setConfirmModal({ isOpen: false, platform: null, loading: false, error: null })}
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="delivery-actions-row">
+              ) : (
                 <button
                   type="button"
                   className="btn-action-primary"
-                  disabled={confirmModal.loading}
-                  onClick={handleConfirmPurchase}
+                  disabled={accountSelectModal.loading || !accountSelectModal.selectedUsername}
+                  onClick={handleConfirmAccountPurchase}
                 >
-                  {confirmModal.loading ? (
+                  {accountSelectModal.loading ? (
                     <>
                       <span className="waiting-dot-pulse mr-2" />
-                      Dispensing & Syncing Sheet...
+                      Dispensing &amp; Syncing Sheet...
                     </>
                   ) : (
-                    'Confirm & Dispense Credentials 🔑'
+                    'Confirm & Buy Selected Log 🔑'
                   )}
                 </button>
-                <button
-                  type="button"
-                  className="btn-action-secondary"
-                  disabled={confirmModal.loading}
-                  onClick={() => setConfirmModal({ isOpen: false, platform: null, loading: false, error: null })}
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      {/* CREDENTIALS DELIVERY MODAL */}
+      {/* =========================================================================
+          STEP 2: CREDENTIALS DELIVERY MODAL (FULL SENSITIVE DATA REVEALED)
+          ========================================================================= */}
       {deliveryModal.isOpen && deliveryModal.credential && (
         <div className="logs-modal-overlay">
           <div className="logs-modal-box" onClick={(e) => e.stopPropagation()}>

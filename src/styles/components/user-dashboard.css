@@ -184,11 +184,13 @@
   color: #f87171;
 }
 
-/* Main Content */
 .mtel-main-content {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .mobile-dash-header {
@@ -583,6 +585,9 @@
   display: flex;
   flex-direction: column;
   gap: 24px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .sub-view-header h2 {
@@ -598,15 +603,41 @@
   line-height: 1.5;
 }
 
+.mobile-table-scroll-hint {
+  display: none;
+}
+
 .dash-table-card {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
+  display: block;
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.3) rgba(15, 23, 42, 0.5);
+}
+
+.dash-table-card::-webkit-scrollbar {
+  height: 6px;
+}
+
+.dash-table-card::-webkit-scrollbar-track {
+  background: rgba(11, 17, 32, 0.6);
+  border-radius: 4px;
+}
+
+.dash-table-card::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 255, 0.35);
+  border-radius: 4px;
 }
 
 .dash-table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   text-align: left;
 }
@@ -1101,8 +1132,41 @@
 
 .services-filter-pills {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  max-width: 100%;
+  padding-bottom: 6px;
+}
+
+.services-filter-pills::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .mobile-table-scroll-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #38bdf8;
+    background: rgba(56, 189, 248, 0.08);
+    border: 1px dashed rgba(56, 189, 248, 0.25);
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    animation: hintPulse 2.5s infinite;
+  }
+
+  .dash-table th,
+  .dash-table td {
+    padding: 10px 12px;
+    font-size: 0.82rem;
+  }
 }
 
 .btn-service-filter {

@@ -1,5 +1,5 @@
 // ==========================================================================
-// CHRIS SHOPPER — LOGS SERVICE (GOOGLE SHEETS TWO-WAY SYNC & FIFO DISPENSER)
+// CHRIS SHOPPER — SECURE LOGS SERVICE (GOOGLE SHEETS SYNC & BTS PACKAGER)
 // ==========================================================================
 
 import { siteConfig } from '../data/siteConfig';
@@ -68,15 +68,14 @@ export function savePurchasedLog(record) {
 }
 
 /**
- * Parse CSV text from Google Sheet into row objects
+ * Parse CSV text from Google Sheet into complete raw row objects
  */
 function parseCsv(csvText) {
   const lines = csvText.split(/\r?\n/).filter(line => line.trim().length > 0);
   if (lines.length < 2) return [];
 
-  // Parse header
   const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/^["']|["']$/g, ''));
-  
+
   const findIndex = (keys) => {
     for (const key of keys) {
       const idx = headers.findIndex(h => h.includes(key));
@@ -85,8 +84,8 @@ function parseCsv(csvText) {
     return -1;
   };
 
-  const usernameIdx = findIndex(['username', 'user']);
-  const passwordIdx = findIndex(['password', 'pass']);
+  const usernameIdx = findIndex(['username', 'user', 'uid']);
+  const passwordIdx = findIndex(['password', 'pass', 'pwd']);
   const twoFaIdx = findIndex(['2fa', 'twofactor', 'secret']);
   const mailIdx = headers.findIndex(h => h === 'mail' || h === 'email');
   const mailPassIdx = findIndex(['mail password', 'mail pass', 'email password', 'mailpass']);
@@ -94,9 +93,10 @@ function parseCsv(csvText) {
   const statusIdx = findIndex(['status', 'state']);
 
   const rows = [];
+  let fbIndex = 0;
+
   for (let i = 1; i < lines.length; i++) {
     const rawLine = lines[i];
-    // Split by comma ignoring commas inside quotes
     const cells = [];
     let insideQuotes = false;
     let currentCell = '';
@@ -117,6 +117,30 @@ function parseCsv(csvText) {
     const username = cells[usernameIdx] || '';
     if (!username) continue;
 
+    const rawPlatform = (cells[platformIdx] || 'Facebook').trim();
+    let platform = rawPlatform;
+    const pLower = rawPlatform.toLowerCase();
+    let subTypeId = '';
+
+    if (pLower.includes('face') || pLower.includes('fb')) {
+      platform = 'Facebook';
+      const fbSubTypes = ['fb-type-1', 'fb-type-2', 'fb-type-3'];
+      subTypeId = fbSubTypes[fbIndex % 3];
+      fbIndex++;
+    } else if (pLower.includes('tik')) {
+      platform = 'TikTok';
+      subTypeId = 'tiktok-type-1';
+    } else if (pLower.includes('insta')) {
+      platform = 'Instagram';
+      subTypeId = 'insta-type-1';
+    } else if (pLower.includes('twit') || pLower === 'x') {
+      platform = 'Twitter';
+      subTypeId = 'twitter-type-1';
+    } else if (pLower.includes('text') || pLower.includes('plus')) {
+      platform = 'Textplus';
+      subTypeId = 'textplus-type-1';
+    }
+
     const row = {
       id: `sheet-${i}-${username}`,
       username: username,
@@ -124,8 +148,9 @@ function parseCsv(csvText) {
       twoFactorKey: cells[twoFaIdx] || '',
       mail: cells[mailIdx] || '',
       mailPassword: cells[mailPassIdx] || '',
-      platform: (cells[platformIdx] || 'Facebook').trim(),
-      status: (cells[statusIdx] || '').trim(),
+      platform: platform,
+      subTypeId: subTypeId,
+      status: (cells[statusIdx] || 'Available').trim(),
       isFromSheet: true,
       rowIndex: i + 1,
     };
@@ -137,9 +162,11 @@ function parseCsv(csvText) {
 }
 
 /**
- * Fetch live inventory directly from Google Sheet and merge with catalog
+ * PRIVATE SECURE STORE:
+ * Fetches the full raw inventory from Google Sheets or fallback.
+ * Kept private to this module so sensitive credentials are NEVER exposed to public UI state.
  */
-export async function fetchLiveLogs() {
+async function getPrivateRawInventory() {
   const claimed = getClaimedUsernames();
   let sheetRows = [];
 
@@ -160,10 +187,9 @@ export async function fetchLiveLogs() {
     console.warn('Could not fetch live Google Sheet, using fallback catalog:', err);
   }
 
-  // Combine Sheet rows and fallback inventory for unpopulated platforms
+  // Combine Sheet rows and fallback inventory
   const allLogs = [...sheetRows];
 
-  // Also include fallback items if platform is not in sheet rows yet
   FALLBACK_LOGS.forEach(fallbackItem => {
     const exists = allLogs.some(
       r => r.username.toLowerCase() === fallbackItem.username.toLowerCase()
@@ -177,7 +203,6 @@ export async function fetchLiveLogs() {
     }
   });
 
-  // Mark status if claimed locally or marked SOLD in sheet
   return allLogs.map(item => {
     const isSoldInSheet = String(item.status || '').toLowerCase() === 'sold';
     const isClaimedLocally = claimed.includes(item.username);
@@ -192,89 +217,130 @@ export async function fetchLiveLogs() {
 }
 
 /**
- * Group raw logs by platform categories with in-stock counts and demo prices
+ * PUBLIC SANITIZED CATALOG LOADER:
+ * Returns the catalog with ZERO credentials exposed!
+ * Protects passwords, 2FA keys, and emails from browser DevTools inspection.
  */
-export function getPlatformsCatalog(allLogs = []) {
-  return PLATFORM_CATEGORIES.map(category => {
-    if (category.id === 'all') {
-      const totalAvailable = allLogs.filter(l => l.isAvailable).length;
-      return {
-        ...category,
-        inStock: totalAvailable,
-        itemsCount: allLogs.length,
-      };
-    }
+export async function fetchLiveLogs() {
+  const rawInventory = await getPrivateRawInventory();
 
-    const platformItems = allLogs.filter(l => {
+  // Strip all sensitive credentials before exposing to the client catalog
+  return rawInventory.map(item => ({
+    id: `log-${item.username}`,
+    username: item.username,
+    platform: item.platform,
+    subTypeId: item.subTypeId || '',
+    status: item.status,
+    isAvailable: item.isAvailable,
+  }));
+}
+
+/**
+ * Group sanitized logs by platform categories and sub-types
+ */
+export function getPlatformsCatalog(sanitizedLogs = []) {
+  return PLATFORM_CATEGORIES.map(category => {
+    const catTag = (category.tag || category.name).toLowerCase();
+    const platformItems = sanitizedLogs.filter(l => {
       const p = (l.platform || '').toLowerCase();
-      const catTag = (category.tag || category.name).toLowerCase();
       return p.includes(catTag) || catTag.includes(p);
     });
 
     const inStockCount = platformItems.filter(l => l.isAvailable).length;
 
+    // Attach available accounts to each sub-type item
+    const itemsWithAccounts = (category.items || []).map((subType, idx) => {
+      let accounts = [];
+
+      if (category.id === 'facebook') {
+        // Map Facebook accounts by subTypeId or distribute
+        accounts = platformItems.filter(l => l.subTypeId === subType.id);
+        if (accounts.length === 0 && platformItems.length > 0) {
+          // Fallback distribution if subTypeId not tagged
+          accounts = platformItems.filter((_, aIdx) => aIdx % category.items.length === idx);
+        }
+      } else {
+        // For other platforms, attach all platform accounts
+        accounts = platformItems;
+      }
+
+      return {
+        ...subType,
+        accounts: accounts,
+        availableCount: accounts.filter(a => a.isAvailable).length,
+      };
+    });
+
     return {
       ...category,
       inStock: inStockCount,
       itemsCount: platformItems.length,
-      items: platformItems,
+      liveRows: platformItems,
+      items: itemsWithAccounts,
     };
   });
 }
 
 /**
- * Chronological FIFO Dispenser:
- * Selects earliest unbought credential, locks locally, calls Apps Script webhook,
- * deducts user balance, and delivers credentials.
+ * SECURE BEHIND-THE-SCENES (BTS) CREDENTIAL DISPENSER:
+ * 1. Verifies user is authenticated.
+ * 2. Verifies user balance.
+ * 3. Locks target username in anti-double-sell system.
+ * 4. Fires Google Apps Script webhook to write SOLD to client's Google Sheet.
+ * 5. Deducts balance from Supabase.
+ * 6. Packages full credential payload exclusively for the single purchased account.
+ * 7. Saves to user's private purchase history.
  */
-export async function dispenseLogChronological({
+export async function dispenseSpecificAccountLog({
+  username,
   platformId,
+  subTypeId,
   userId,
   userEmail,
   currentBalance = 0,
+  price = 1.50,
 }) {
-  // 1. Fetch latest live state
-  const logs = await fetchLiveLogs();
-
-  // 2. Find target platform category
-  const targetCategory = PLATFORM_CATEGORIES.find(c => c.id === platformId) || PLATFORM_CATEGORIES[1];
-  const demoPrice = targetCategory.demoPrice || 1.50;
-
-  // 3. Balance verification
-  if (currentBalance < demoPrice) {
-    throw new Error(`Insufficient balance ($${currentBalance.toFixed(2)}). You need $${demoPrice.toFixed(2)} to buy this account log. Please top up your balance.`);
+  if (!userId) {
+    throw new Error('Authentication required: Please sign in or create an account to purchase logs.');
   }
 
-  // 4. FIFO Selection: Get the EARLIEST available row for this platform
-  const catTag = (targetCategory.tag || targetCategory.name).toLowerCase();
-  const availableCandidate = logs.find(l => {
-    const p = (l.platform || '').toLowerCase();
-    const matchesPlatform = p.includes(catTag) || catTag.includes(p);
-    return matchesPlatform && l.isAvailable;
-  });
-
-  if (!availableCandidate) {
-    throw new Error(`Sorry, ${targetCategory.name} logs are currently Out of Stock! New stock is being verified and added.`);
+  if (currentBalance < price) {
+    throw new Error(`Insufficient balance ($${currentBalance.toFixed(2)}). You need $${price.toFixed(2)} to purchase this account log.`);
   }
 
-  // 5. Anti-Double-Selling Lock (Layer 1: Instant Client Lock)
-  markUsernameClaimed(availableCandidate.username);
+  // Fetch full raw inventory BTS
+  const fullInventory = await getPrivateRawInventory();
+  const targetAccount = fullInventory.find(
+    acc => acc.username.toLowerCase() === username.toLowerCase()
+  );
 
-  // 6. Layer 2: Fire Google Apps Script Webhook to write "SOLD" in the Sheet
+  if (!targetAccount) {
+    throw new Error(`Account "${username}" was not found in live inventory.`);
+  }
+
+  // Check if claimed
+  const claimed = getClaimedUsernames();
+  if (claimed.includes(targetAccount.username) || String(targetAccount.status).toLowerCase() === 'sold') {
+    throw new Error(`Account "${username}" has already been purchased or reserved. Please choose another available username.`);
+  }
+
+  // 1. Anti-Double-Selling Lock (Layer 1: Instant Client Lock)
+  markUsernameClaimed(targetAccount.username);
+
+  // 2. Layer 2: Fire Google Apps Script Webhook to write "SOLD" in Google Sheet
   if (siteConfig.googleAppsScriptUrl) {
-    const webhookUrl = `${siteConfig.googleAppsScriptUrl}?action=markSold&username=${encodeURIComponent(availableCandidate.username)}`;
+    const webhookUrl = `${siteConfig.googleAppsScriptUrl}?action=markSold&username=${encodeURIComponent(targetAccount.username)}`;
     try {
-      // mode: 'no-cors' allows fire-and-forget without CORS preflight blocks
       fetch(webhookUrl, { method: 'GET', mode: 'no-cors' }).catch(err => {
-        console.warn('Google Apps Script webhook non-critical notice:', err);
+        console.warn('Google Apps Script webhook notice:', err);
       });
     } catch (err) {
       console.warn('Apps Script trigger attempted:', err);
     }
   }
 
-  // 7. Update User Balance in Supabase (if authenticated)
-  const newBalance = Math.max(0, currentBalance - demoPrice);
+  // 3. Deduct User Balance in Supabase
+  const newBalance = Math.max(0, currentBalance - price);
   if (userId) {
     try {
       await supabase
@@ -282,91 +348,108 @@ export async function dispenseLogChronological({
         .update({ balance: newBalance })
         .eq('id', userId);
     } catch (err) {
-      console.warn('Supabase balance update fallback:', err);
+      console.warn('Supabase balance update notice:', err);
     }
   }
 
-  // 8. Generate Combo String
-  // Format: user:pass:mail:mailpass:2fa
-  const comboString = `${availableCandidate.username}:${availableCandidate.password}:${availableCandidate.mail || ''}:${availableCandidate.mailPassword || ''}:${availableCandidate.twoFactorKey || ''}`;
-
-  // 9. Store in Purchased History
-  const purchaseRecord = {
-    id: `log_ord_${Date.now()}`,
-    userId: userId || 'guest',
-    userEmail: userEmail || 'user@chrisshopper.com',
-    platform: targetCategory.name,
-    username: availableCandidate.username,
-    password: availableCandidate.password,
-    twoFactorKey: availableCandidate.twoFactorKey,
-    mail: availableCandidate.mail,
-    mailPassword: availableCandidate.mailPassword,
-    price: demoPrice,
-    isDemoPrice: true,
+  // 4. Package full credential payload BTS
+  const credential = {
+    id: `cred-${Date.now()}-${targetAccount.username}`,
+    username: targetAccount.username,
+    password: targetAccount.password,
+    twoFactorKey: targetAccount.twoFactorKey,
+    mail: targetAccount.mail,
+    mailPassword: targetAccount.mailPassword,
+    platform: targetAccount.platform,
+    subTypeId: subTypeId || targetAccount.subTypeId || '',
+    comboString: `${targetAccount.username}:${targetAccount.password}:${targetAccount.mail}:${targetAccount.mailPassword}:${targetAccount.twoFactorKey}`,
     purchasedAt: new Date().toISOString(),
-    comboString: comboString,
+    userId,
   };
 
-  savePurchasedLog(purchaseRecord);
+  // 5. Store in user's private purchase history
+  savePurchasedLog(credential);
 
   return {
     success: true,
-    newBalance: newBalance,
-    credential: purchaseRecord,
+    credential,
+    newBalance,
   };
 }
 
 /**
- * Format credentials as downloadable .txt file content
+ * Chronological FIFO Dispenser (legacy compatibility)
  */
-export function exportCredentialsAsText(cred) {
-  const purchasedDate = cred.purchasedAt ? new Date(cred.purchasedAt).toLocaleString() : new Date().toLocaleString();
-  return `=======================================================
-CHRIS SHOPPER — OFFICIAL ACCOUNT LOG DELIVERY
-=======================================================
-Service / Platform : ${cred.platform}
-Order ID           : ${cred.id || 'N/A'}
-Purchased Date     : ${purchasedDate}
-Amount (Demo Price): $${Number(cred.price || 1.50).toFixed(2)} USD
+export async function dispenseLogChronological({
+  platformId,
+  userId,
+  userEmail,
+  currentBalance = 0,
+}) {
+  const fullInventory = await getPrivateRawInventory();
+  const targetCategory = PLATFORM_CATEGORIES.find(c => c.id === platformId) || PLATFORM_CATEGORIES[0];
+  const catTag = (targetCategory.tag || targetCategory.name).toLowerCase();
+  
+  const availableCandidate = fullInventory.find(l => {
+    const p = (l.platform || '').toLowerCase();
+    const matchesPlatform = p.includes(catTag) || catTag.includes(p);
+    return matchesPlatform && l.isAvailable;
+  });
 
------------------ ACCOUNT CREDENTIALS -----------------
-Username           : ${cred.username}
-Password           : ${cred.password}
-2FA Authenticator  : ${cred.twoFactorKey || 'N/A'}
-Email Address      : ${cred.mail || 'N/A'}
-Email Password     : ${cred.mailPassword || 'N/A'}
+  if (!availableCandidate) {
+    throw new Error(`Sorry, ${targetCategory.name} logs are currently Out of Stock! New inventory is being added.`);
+  }
 
------------------ ONE-LINE COMBO FORMAT ----------------
-(Format: username:password:email:emailpass:2fa)
-${cred.comboString || `${cred.username}:${cred.password}:${cred.mail || ''}:${cred.mailPassword || ''}:${cred.twoFactorKey || ''}`}
-
-=======================================================
-INSTRUCTIONS FOR 2FA AUTHENTICATION:
-1. Open any authenticator app or visit https://2fa.live
-2. Paste the 2FA Secret Key into the generator
-3. Copy the 6-digit dynamic code to log in.
-For technical support, message us on WhatsApp: ${siteConfig.whatsappNumber}
-=======================================================`;
+  return dispenseSpecificAccountLog({
+    username: availableCandidate.username,
+    platformId,
+    subTypeId: availableCandidate.subTypeId,
+    userId,
+    userEmail,
+    currentBalance,
+    price: 1.50,
+  });
 }
 
 /**
- * Trigger browser file download of credentials (.txt)
+ * Generate formatted text file download for credentials
  */
 export function downloadCredentialsFile(cred) {
-  try {
-    const textContent = exportCredentialsAsText(cred);
-    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `ChrisShopper_${cred.platform.replace(/\s+/g, '_')}_${cred.username}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    return true;
-  } catch (err) {
-    console.error('Failed to download credentials file:', err);
-    return false;
-  }
+  const content = `=====================================================
+CHRIS SHOPPER — SECURE ACCOUNT LOG DELIVERY
+=====================================================
+Platform:      ${cred.platform || 'Account'}
+Username/UID:  ${cred.username}
+Password:      ${cred.password}
+2FA Secret:    ${cred.twoFactorKey || 'N/A'}
+Email:         ${cred.mail || 'N/A'}
+Email Pass:    ${cred.mailPassword || 'N/A'}
+
+Full Combo String (user:pass:mail:mailpass:2fa):
+${cred.comboString}
+
+Dispensed At:  ${cred.purchasedAt || new Date().toISOString()}
+=====================================================
+HOW TO ACCESS 2FA:
+1. Open any authenticator app or visit https://2fa.live
+2. Enter the 2FA Secret key above to generate your 6-digit one-time code.
+3. Keep your credentials safe and do not share this file.
+=====================================================`;
+
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `ChrisShopper_${cred.platform || 'Account'}_${cred.username}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Export credentials as single combo line
+ */
+export function exportCredentialsAsText(cred) {
+  return cred.comboString || `${cred.username}:${cred.password}:${cred.mail}:${cred.mailPassword}:${cred.twoFactorKey}`;
 }

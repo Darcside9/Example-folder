@@ -947,6 +947,11 @@ export default function UserDashboard({ user, onSignOut }) {
               </button>
             </div>
 
+            {/* Mobile swipe hint banner */}
+            <div className="mobile-table-scroll-hint">
+              <span>👉 Swipe table horizontally to view full credentials &amp; actions</span>
+            </div>
+
             {historySubTab === 'sms' ? (
               <div className="dash-table-card">
                 <table className="dash-table">

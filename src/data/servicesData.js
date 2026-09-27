@@ -48,7 +48,7 @@ export const services = [
     id: 'logs',
     badge: 'New Category 🔑',
     title: 'Social & Platform Account Logs',
-    description: 'Pre-created, aged accounts for Facebook, TikTok, Instagram, Twitter/X, and Google with 2FA and mail access.',
+    description: 'Pre-created, aged accounts for Facebook, TikTok, Instagram, Twitter, and Textplus with 2FA and mail access.',
     items: [
       'Genuine aged account credentials with 2FA secret key',
       'Original email and email password included',
