@@ -7,7 +7,7 @@
 import { account, databases, APPWRITE_CONFIG, ID, Query } from './appwrite';
 
 const SESSION_USER_KEY = 'cs_user';
-const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || '').toLowerCase();
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || 'darcside999@gmail.com').toLowerCase();
 
 /**
  * Helper to get currently cached session user from localStorage
@@ -91,7 +91,7 @@ export async function appwriteSignUp(email, password, contactInfo = '', name = '
     contact_info: contactInfo,
     balance: initialBalance,
     role: role,
-    is_admin: role === 'admin',
+    is_admin: role === 'admin' || cleanEmail === ADMIN_EMAIL,
     profileDocId: profileDoc?.$id || null
   };
 
@@ -105,15 +105,26 @@ export async function appwriteSignUp(email, password, contactInfo = '', name = '
 export async function appwriteSignIn(email, password) {
   const cleanEmail = email.trim().toLowerCase();
 
-  // 1. In case an existing active session is dangling, clean it up
+  // 1. Clean up dangling local session if present
   try {
-    await account.deleteSession('current');
+    if (localStorage.getItem(SESSION_USER_KEY)) {
+      await account.deleteSession('current');
+    }
   } catch {
     // No active session to delete
   }
 
   // 2. Create Email/Password Session
-  const session = await account.createEmailPasswordSession(cleanEmail, password);
+  let session;
+  try {
+    session = await account.createEmailPasswordSession(cleanEmail, password);
+  } catch (err) {
+    console.error('Appwrite signIn error:', err);
+    if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+      throw new Error('Connection to Appwrite Cloud failed (Failed to fetch). Please check your internet connection or verify domain settings.');
+    }
+    throw err;
+  }
 
   // 3. Fetch active Appwrite Account
   const authUser = await account.get();
