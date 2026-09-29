@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { authSignIn, authSignUp } from '../lib/supabase';
+import { appwriteSignIn, appwriteSignUp } from '../lib/appwriteAuth';
 import { siteConfig } from '../data/siteConfig';
 import { useAuth } from '../lib/AuthContext';
 
@@ -67,11 +67,11 @@ export default function AuthView() {
     setIsLoading(true);
     try {
       if (mode === 'login') {
-        const { user } = await authSignIn(email, password);
+        const { user } = await appwriteSignIn(email, password);
         login(user);
         navigate('/dashboard');
       } else {
-        const { user } = await authSignUp(email, password, contact);
+        const { user } = await appwriteSignUp(email, password, contact);
         login(user);
         navigate('/dashboard');
       }

@@ -1,7 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { pricingPlans, pricingCategories, countries } from '../data/pricingData';
 import { useAuth } from '../lib/AuthContext';
+import { fetchLivePricing, subscribeToPricingUpdates } from '../lib/pricingService';
+import { formatNaira } from '../data/siteConfig';
 
 export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
   const { currentUser } = useAuth();
@@ -10,11 +12,51 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedCountry, setSelectedCountry] = useState('US');
+  const [livePrices, setLivePrices] = useState({});
+
+  useEffect(() => {
+    fetchLivePricing().then(items => {
+      const map = {};
+      (items || []).forEach(i => {
+        map[i.product_id] = i;
+      });
+      setLivePrices(map);
+    });
+
+    const unsubscribe = subscribeToPricingUpdates(items => {
+      const map = {};
+      (items || []).forEach(i => {
+        map[i.product_id] = i;
+      });
+      setLivePrices(map);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   const activeCountry = countries.find((c) => c.code === selectedCountry) || countries[0];
 
+  const mergedPlans = useMemo(() => {
+    return pricingPlans.map(plan => {
+      const live = livePrices[plan.id];
+      if (live) {
+        return {
+          ...plan,
+          price: formatNaira(live.price_usd),
+          isActive: live.is_active,
+          speed: live.carrier_speed || plan.speed,
+          badge: live.is_active ? 'Available Now' : 'Coming Soon',
+          badgeType: live.is_active ? 'active' : 'soon'
+        };
+      }
+      return plan;
+    });
+  }, [livePrices]);
+
   const filteredPlans = useMemo(() => {
-    return pricingPlans.filter((plan) => {
+    return mergedPlans.filter((plan) => {
       const matchesSearch = plan.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         plan.description.toLowerCase().includes(searchQuery.toLowerCase());
       
@@ -27,9 +69,9 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
 
       return matchesSearch && matchesCat;
     });
-  }, [searchQuery, selectedCategory]);
+  }, [mergedPlans, searchQuery, selectedCategory]);
 
-  const activeCount = pricingPlans.filter((p) => p.isActive).length;
+  const activeCount = mergedPlans.filter((p) => p.isActive).length;
 
   return (
     <section id="pricing" className="section pricing-section reveal-on-scroll">

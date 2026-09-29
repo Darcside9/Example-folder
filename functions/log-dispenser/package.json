@@ -1,0 +1,10 @@
+{
+  "name": "log-dispenser",
+  "version": "1.0.0",
+  "description": "Appwrite Serverless Dispenser Function for Chris Shopper Account Logs",
+  "main": "src/main.js",
+  "type": "module",
+  "dependencies": {
+    "node-appwrite": "^14.1.0"
+  }
+}

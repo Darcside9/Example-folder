@@ -63,10 +63,10 @@ export default function UserDashboard({ user, onSignOut }) {
 
   // Modals & Feedback
   const [showTopUpModal, setShowTopUpModal] = useState(false);
-  const [topUpAmount, setTopUpAmount] = useState(10);
+  const [topUpAmount, setTopUpAmount] = useState(2000);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [transferEmail, setTransferEmail] = useState('');
-  const [transferAmount, setTransferAmount] = useState(5);
+  const [transferAmount, setTransferAmount] = useState(1000);
   const [transferError, setTransferError] = useState(null);
   const [transferSuccess, setTransferSuccess] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
@@ -237,7 +237,7 @@ export default function UserDashboard({ user, onSignOut }) {
     setBalance(newBal);
     setActiveLines(prev => prev.filter(l => l.id !== line.id));
     setOrders(prev => prev.map(o => o.id === line.id ? { ...o, status: 'refunded' } : o));
-    showToast(`💰 Line cancelled. $${line.cost} refunded to your balance.`);
+    showToast(`💰 Line cancelled. ${siteConfig.formatNaira(line.cost)} refunded to your balance.`);
   };
 
   // Handle Fund Transfer Submit
@@ -255,7 +255,7 @@ export default function UserDashboard({ user, onSignOut }) {
       });
 
       setBalance(res.newBalance);
-      setTransferSuccess(`Successfully transferred $${transferAmount} to ${res.recipientEmail}!`);
+      setTransferSuccess(`Successfully transferred ${siteConfig.formatNaira(transferAmount)} to ${res.recipientEmail}!`);
       setTransferEmail('');
       setTimeout(() => {
         setShowTransferModal(false);
@@ -465,7 +465,7 @@ export default function UserDashboard({ user, onSignOut }) {
         <div className="sidebar-balance-box">
           <div className="balance-box-left">
             <span className="balance-sub-label">CURRENT BALANCE</span>
-            <span className="balance-currency-val">${balance.toFixed(2)}</span>
+            <span className="balance-currency-val">{siteConfig.formatNaira(balance)}</span>
           </div>
           <button 
             className="btn-topup-gradient"
@@ -563,7 +563,7 @@ export default function UserDashboard({ user, onSignOut }) {
 
         {/* ACCOUNT / FOOTER Controls */}
         <div className="sidebar-footer-group">
-          {user?.role === 'admin' && (
+          {(currentUser?.role === 'admin' || currentUser?.is_admin || user?.role === 'admin') && (
             <button 
               className="sidebar-nav-item admin-highlight-link"
               onClick={() => navigate('/admin')}
@@ -617,7 +617,7 @@ export default function UserDashboard({ user, onSignOut }) {
           </div>
 
           <div className="mobile-balance-pill" onClick={() => setShowTopUpModal(true)}>
-            ${balance.toFixed(2)} +
+            {siteConfig.formatNaira(balance)} +
           </div>
         </header>
 
@@ -739,7 +739,7 @@ export default function UserDashboard({ user, onSignOut }) {
                             key={srv.id} 
                             className={`service-tr-row ${isActive ? 'service-row-active' : 'service-row-soon'}`}
                             onClick={() => handleRentService(srv)}
-                            title={isActive ? `Rent ${srv.name} ($${srv.price.toFixed(2)})` : 'Service Coming Soon / Request on WhatsApp'}
+                            title={isActive ? `Rent ${srv.name} (${siteConfig.formatNaira(srv.price)})` : 'Service Coming Soon / Request on WhatsApp'}
                           >
                             <td className="td-service-name">
                               <span className={`srv-indicator-dot ${isActive ? 'active' : 'inactive'}`}></span>
@@ -747,11 +747,11 @@ export default function UserDashboard({ user, onSignOut }) {
                               {!isActive && <span className="tag-soon-tiny">SOON</span>}
                             </td>
                             <td className="td-retail-price">
-                              {srv.retailPrice ? <span className="retail-strike">Retail Price: ${srv.retailPrice.toFixed(2)}</span> : '-'}
+                              {srv.retailPrice ? <span className="retail-strike">Retail Price: {siteConfig.formatNaira(srv.retailPrice)}</span> : '-'}
                             </td>
                             <td className="td-wholesale-price">
                               <span className={isActive ? 'price-active-bold' : 'price-soon-sub'}>
-                                ${srv.price.toFixed(2)}
+                                {siteConfig.formatNaira(srv.price)}
                               </span>
                             </td>
                           </tr>
@@ -864,7 +864,7 @@ export default function UserDashboard({ user, onSignOut }) {
                                   </div>
                                 )}
                               </td>
-                              <td className="font-mono">${Number(line.cost || 0.18).toFixed(2)}</td>
+                              <td className="font-mono">{siteConfig.formatNaira(line.cost || 250)}</td>
                               <td className="font-mono time-timer-cell">{timeRemaining}</td>
                               <td>
                                 <div className="rental-actions-group">
@@ -903,7 +903,7 @@ export default function UserDashboard({ user, onSignOut }) {
           <div className="dash-sub-view">
             <div className="sub-view-header">
               <h2>🔑 Social & Platform Account Logs</h2>
-              <p>Browse aged accounts with 2FA, Outlook email access, and instant FIFO delivery from live Google Sheets.</p>
+              <p>Browse aged accounts with 2FA, Outlook email access, and instant delivery from Appwrite Cloud.</p>
             </div>
 
             <LogsMarketplace 
@@ -911,9 +911,19 @@ export default function UserDashboard({ user, onSignOut }) {
               onShowToast={showToast}
               onPurchaseComplete={(newCred) => {
                 setPurchasedLogsList(getPurchasedLogs(currentUser?.id));
+                try {
+                  const raw = localStorage.getItem('cs_user');
+                  if (raw) {
+                    const u = JSON.parse(raw);
+                    if (u.balance !== undefined) setBalance(Number(u.balance));
+                  }
+                } catch {}
                 if (currentUser?.id) {
                   getUserProfile(currentUser.id).then(profile => {
-                    if (profile?.balance !== undefined) setBalance(Number(profile.balance));
+                    if (profile?.balance !== undefined) {
+                      setBalance(Number(profile.balance));
+                      setCurrentUser(prev => ({ ...prev, balance: Number(profile.balance) }));
+                    }
                   });
                 }
               }}
@@ -1369,30 +1379,30 @@ export default function UserDashboard({ user, onSignOut }) {
 
             <div className="modal-body">
               <div className="topup-options-grid">
-                {[5, 10, 20, 50, 100].map(amt => (
+                {[1000, 2000, 5000, 10000, 20000].map(amt => (
                   <button
                     key={amt}
                     type="button"
                     className={`topup-amt-pill ${topUpAmount === amt ? 'active' : ''}`}
                     onClick={() => setTopUpAmount(amt)}
                   >
-                    ${amt}
+                    {siteConfig.formatNaira(amt)}
                   </button>
                 ))}
               </div>
 
               {/* Custom Top-Up Amount Input */}
               <div className="custom-topup-row">
-                <label className="input-hint">Or specify custom top-up amount ($):</label>
+                <label className="input-hint">Or specify custom top-up amount (₦):</label>
                 <div className="custom-topup-input-box">
-                  <span className="currency-symbol">$</span>
+                  <span className="currency-symbol">₦</span>
                   <input
                     type="number"
-                    min="1"
-                    step="1"
-                    placeholder="Enter custom amount (e.g. 25)"
+                    min="500"
+                    step="500"
+                    placeholder="Enter custom amount (e.g. 5000)"
                     value={topUpAmount || ''}
-                    onChange={(e) => setTopUpAmount(Math.max(1, Number(e.target.value) || 0))}
+                    onChange={(e) => setTopUpAmount(Math.max(500, Number(e.target.value) || 0))}
                     className="custom-topup-input font-mono"
                   />
                 </div>
@@ -1401,7 +1411,7 @@ export default function UserDashboard({ user, onSignOut }) {
               <div className="topup-summary-box">
                 <div className="summary-row">
                   <span>Selected Amount:</span>
-                  <strong>${topUpAmount}.00</strong>
+                  <strong>{siteConfig.formatNaira(topUpAmount)}</strong>
                 </div>
                 <div className="summary-row">
                   <span>Target Account:</span>
@@ -1409,7 +1419,7 @@ export default function UserDashboard({ user, onSignOut }) {
                 </div>
                 <div className="summary-row total-row">
                   <span>Total Due:</span>
-                  <span className="total-amount">${topUpAmount}.00</span>
+                  <span className="total-amount">{siteConfig.formatNaira(topUpAmount)}</span>
                 </div>
               </div>
 
@@ -1465,18 +1475,18 @@ export default function UserDashboard({ user, onSignOut }) {
               </div>
 
               <div className="modal-form-group">
-                <label>Amount ($)</label>
+                <label>Amount (₦)</label>
                 <input 
                   type="number"
-                  min="0.10"
-                  step="0.10"
+                  min="100"
+                  step="100"
                   max={balance}
                   required
                   value={transferAmount}
                   onChange={(e) => setTransferAmount(e.target.value)}
                   className="modal-select"
                 />
-                <span className="input-hint">Your available balance: ${balance.toFixed(2)}</span>
+                <span className="input-hint">Your available balance: {siteConfig.formatNaira(balance)}</span>
               </div>
 
               <button type="submit" className="btn btn-primary btn-full btn-lg">

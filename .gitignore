@@ -95,6 +95,10 @@ scratch/
 *.local.yml
 *.local.yaml
 
+# Archives & deployment packages
+*.tar.gz
+*.zip
+
 # Supabase local dev artifacts
 supabase/.branches/
 supabase/.temp/

@@ -1,14 +1,16 @@
 // ==========================================================================
-// CHRIS SHOPPER — BACKEND DASHBOARD & SUPABASE DATA SERVICE
+// CHRIS SHOPPER — BACKEND DASHBOARD & APPWRITE DATA SERVICE
+// Fully integrated with Appwrite Cloud (EU Frankfurt)
 // ==========================================================================
 
+import { databases, APPWRITE_CONFIG, Query, ID } from './appwrite';
 import { 
-  supabase, 
-  authUpdateEmail, 
-  authVerifyEmailOtp, 
-  authUpdatePassword, 
-  authUpdateProfile 
-} from './supabase.js';
+  appwriteGetUserProfile, 
+  appwriteGetAllUsers, 
+  appwriteUpdateUserBalance,
+  appwriteUpdateProfile,
+  appwriteUpdatePassword
+} from './appwriteAuth';
 
 // Default / fallback services catalog matching Chris Shopper specification
 export const DEFAULT_SERVICES = [
@@ -19,26 +21,26 @@ export const DEFAULT_SERVICES = [
 ];
 
 /**
- * Fetch all available services from Supabase
+ * Fetch all available services from Appwrite products_pricing
  */
 export async function getServices() {
   try {
-    const { data, error } = await supabase
-      .from('services')
-      .select('*')
-      .order('price', { ascending: true });
+    const res = await databases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.products_pricing,
+      [Query.equal('product_type', 'sms_service'), Query.limit(50)]
+    );
 
-    if (error || !data || data.length === 0) {
+    if (res.documents.length === 0) {
       return DEFAULT_SERVICES;
     }
 
-    // Merge database state with catalog
     return DEFAULT_SERVICES.map(srv => {
-      const dbMatch = data.find(d => d.code === srv.code || d.name.toLowerCase() === srv.name.toLowerCase());
+      const dbMatch = res.documents.find(d => d.product_id === srv.id || d.name.toLowerCase() === srv.name.toLowerCase());
       if (dbMatch) {
         return {
           ...srv,
-          price: Number(dbMatch.price),
+          price: Number(dbMatch.price_usd),
           is_active: dbMatch.is_active,
           carrier_speed: dbMatch.carrier_speed || srv.carrier_speed
         };
@@ -46,49 +48,41 @@ export async function getServices() {
       return srv;
     });
   } catch (err) {
-    console.warn('Using fallback services list:', err);
+    console.warn('Using fallback services list:', err.message);
     return DEFAULT_SERVICES;
   }
 }
 
 /**
- * Fetch user profile & live balance from Supabase
+ * Fetch user profile & live balance from Appwrite user_profiles
  */
 export async function getUserProfile(userId) {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (error || !data) {
-      return null;
-    }
-    return data;
-  } catch (err) {
-    console.error('Error fetching user profile:', err);
-    return null;
-  }
+  return await appwriteGetUserProfile(userId);
 }
 
 /**
- * Fetch user active & historical orders
+ * Fetch user active & historical orders from Appwrite orders
  */
 export async function getUserOrders(userId) {
   try {
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    const res = await databases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.orders,
+      [Query.equal('user_id', userId), Query.orderDesc('$createdAt'), Query.limit(50)]
+    );
 
-    if (error || !data) {
-      return [];
-    }
-    return data;
+    return res.documents.map(d => ({
+      id: d.$id,
+      user_id: d.user_id,
+      service_name: d.item_name,
+      phone_number: d.reference,
+      cost: Number(d.price || 0),
+      status: d.status,
+      created_at: d.$createdAt,
+      details: d.details
+    }));
   } catch (err) {
-    console.error('Error fetching orders:', err);
+    console.warn('Error fetching orders from Appwrite:', err.message);
     return [];
   }
 }
@@ -110,61 +104,60 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
 
   const newBalance = Number((currentBalance - service.price).toFixed(2));
 
-  // Try saving order to Supabase
+  // Save order to Appwrite orders
+  let orderId = 'ord-' + Date.now();
   try {
-    const { data: orderData, error: orderErr } = await supabase
-      .from('orders')
-      .insert([
-        {
-          user_id: userId,
-          service_name: service.name,
-          country_code: country,
-          phone_number: phoneNumber,
-          cost: service.price,
-          status: 'pending',
-          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
-        }
-      ])
-      .select()
-      .single();
-
-    // Update user balance in profiles table
-    await supabase
-      .from('profiles')
-      .update({ balance: newBalance })
-      .eq('id', userId);
-
-    return {
-      order: orderData || {
-        id: 'ord_' + Math.random().toString(36).substr(2, 9),
+    const doc = await databases.createDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.orders,
+      ID.unique(),
+      {
         user_id: userId,
-        service_name: service.name,
-        country_code: country,
-        phone_number: phoneNumber,
-        cost: service.price,
+        user_email: '',
+        product_type: 'sms_service',
+        item_name: service.name,
+        reference: phoneNumber,
+        price: service.price,
         status: 'pending',
-        created_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
-      },
-      newBalance
-    };
+        details: JSON.stringify({ country, service: service.name, phoneNumber })
+      }
+    );
+    orderId = doc.$id;
   } catch (err) {
-    console.warn('Allocated line in local session:', err);
-    return {
-      order: {
-        id: 'ord_' + Math.random().toString(36).substr(2, 9),
-        user_id: userId,
-        service_name: service.name,
-        country_code: country,
-        phone_number: phoneNumber,
-        cost: service.price,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
-      },
-      newBalance
-    };
+    console.warn('Appwrite order save note:', err.message);
   }
+
+  // Deduct user balance in Appwrite user_profiles
+  try {
+    await appwriteUpdateUserBalance(userId, newBalance);
+  } catch (bErr) {
+    console.warn('Appwrite balance deduct note:', bErr.message);
+  }
+
+  // Update local session
+  try {
+    const raw = localStorage.getItem('cs_user');
+    if (raw) {
+      const u = JSON.parse(raw);
+      u.balance = newBalance;
+      localStorage.setItem('cs_user', JSON.stringify(u));
+    }
+  } catch {}
+
+  return {
+    order: {
+      id: orderId,
+      user_id: userId,
+      service_name: service.name,
+      country_code: country,
+      phone_number: phoneNumber,
+      cost: service.price,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    },
+    newBalance
+  };
 }
 
 /**
@@ -176,25 +169,16 @@ export async function simulateSmsOtp(orderId) {
   const messageBody = `Your Chris Shopper verification code is: ${formattedCode}. Never share this code with anyone.`;
 
   try {
-    await supabase
-      .from('orders')
-      .update({
-        status: 'code_received',
-        sms_code: formattedCode
-      })
-      .eq('id', orderId);
-
-    await supabase
-      .from('sms_logs')
-      .insert([
-        {
-          order_id: orderId,
-          sender: 'ChrisShopper Gateway',
-          message_body: messageBody
-        }
-      ]);
+    if (orderId && !orderId.startsWith('ord-')) {
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.orders,
+        orderId,
+        { status: 'code_received' }
+      );
+    }
   } catch (err) {
-    console.warn('Simulated SMS locally:', err);
+    console.warn('Simulated SMS update notice:', err.message);
   }
 
   return {
@@ -207,46 +191,58 @@ export async function simulateSmsOtp(orderId) {
  * Cancel and Auto-Refund an active order
  */
 export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalance }) {
-  const newBalance = Number((currentBalance + cost).toFixed(2));
+  const newBalance = Number((currentBalance + Number(cost)).toFixed(2));
 
   try {
-    await supabase
-      .from('orders')
-      .update({ status: 'cancelled' })
-      .eq('id', orderId);
-
-    await supabase
-      .from('profiles')
-      .update({ balance: newBalance })
-      .eq('id', userId);
+    if (orderId && !orderId.startsWith('ord-')) {
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.orders,
+        orderId,
+        { status: 'cancelled' }
+      );
+    }
+    await appwriteUpdateUserBalance(userId, newBalance);
   } catch (err) {
-    console.warn('Cancelled order locally:', err);
+    console.warn('Cancel order update notice:', err.message);
   }
+
+  try {
+    const raw = localStorage.getItem('cs_user');
+    if (raw) {
+      const u = JSON.parse(raw);
+      u.balance = newBalance;
+      localStorage.setItem('cs_user', JSON.stringify(u));
+    }
+  } catch {}
 
   return newBalance;
 }
 
 /**
- * Transfer funds between users
+ * Transfer funds between users in Appwrite
  */
 export async function transferFunds({ senderId, recipientEmail, amount, currentBalance }) {
   if (amount <= 0 || currentBalance < amount) {
     throw new Error(`Insufficient funds. Your balance is $${currentBalance.toFixed(2)}.`);
   }
 
-  try {
-    // Look up recipient in public.profiles
-    const { data: recipient, error: recErr } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('email', recipientEmail.trim().toLowerCase())
-      .single();
+  const cleanRecipientEmail = recipientEmail.trim().toLowerCase();
 
-    if (recErr || !recipient) {
+  try {
+    // Look up recipient in Appwrite user_profiles
+    const res = await databases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.user_profiles,
+      [Query.equal('email', cleanRecipientEmail), Query.limit(1)]
+    );
+
+    if (res.documents.length === 0) {
       throw new Error(`Recipient user "${recipientEmail}" was not found. Please verify the email.`);
     }
 
-    if (recipient.id === senderId) {
+    const recipient = res.documents[0];
+    if (recipient.user_id === senderId) {
       throw new Error('You cannot transfer funds to yourself.');
     }
 
@@ -254,16 +250,24 @@ export async function transferFunds({ senderId, recipientEmail, amount, currentB
     const newRecipientBalance = Number(((Number(recipient.balance) || 0) + amount).toFixed(2));
 
     // Update sender balance
-    await supabase
-      .from('profiles')
-      .update({ balance: newSenderBalance })
-      .eq('id', senderId);
+    await appwriteUpdateUserBalance(senderId, newSenderBalance);
 
     // Update recipient balance
-    await supabase
-      .from('profiles')
-      .update({ balance: newRecipientBalance })
-      .eq('id', recipient.id);
+    await databases.updateDocument(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.user_profiles,
+      recipient.$id,
+      { balance: newRecipientBalance }
+    );
+
+    try {
+      const raw = localStorage.getItem('cs_user');
+      if (raw) {
+        const u = JSON.parse(raw);
+        u.balance = newSenderBalance;
+        localStorage.setItem('cs_user', JSON.stringify(u));
+      }
+    } catch {}
 
     return {
       success: true,
@@ -276,59 +280,21 @@ export async function transferFunds({ senderId, recipientEmail, amount, currentB
 }
 
 /**
- * ADMIN: Fetch all registered users
+ * ADMIN: Fetch all registered users from Appwrite user_profiles
  */
 export async function adminGetAllUsers() {
-  try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error || !data) return [];
-    return data;
-  } catch (err) {
-    console.error('Admin fetch users error:', err);
-    return [];
-  }
+  return await appwriteGetAllUsers();
 }
 
 /**
- * ADMIN: Update a user's balance
+ * ADMIN: Update a user's balance in Appwrite user_profiles
  */
 export async function adminUpdateUserBalance(userId, newBalance) {
-  try {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ balance: Number(newBalance) })
-      .eq('id', userId);
-
-    return !error;
-  } catch (err) {
-    console.error('Admin update user balance error:', err);
-    return false;
-  }
-}
-
-/**
- * ADMIN: Update service status or price
- */
-export async function adminUpdateService(serviceId, updates) {
-  try {
-    const { error } = await supabase
-      .from('services')
-      .update(updates)
-      .eq('id', serviceId);
-
-    return !error;
-  } catch (err) {
-    console.error('Admin update service error:', err);
-    return false;
-  }
+  return await appwriteUpdateUserBalance(userId, newBalance);
 }
 
 // ==========================================================================
-// SETTINGS & PROFILE SECURITY OTP SERVICES (SUPABASE SYNCHRONIZED)
+// SETTINGS & PROFILE SECURITY OTP SERVICES (APPWRITE SYNCHRONIZED)
 // ==========================================================================
 
 const OTP_STORE_KEY = 'cs_pending_otps';
@@ -397,17 +363,6 @@ export async function requestWhatsAppOtp(userId, newPhoneNumber) {
   const key = `phone_${userId || 'current'}`;
   saveOtp(key, { target: cleanNumber, code });
 
-  try {
-    if (supabase) {
-      await supabase
-        .from('profiles')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', userId);
-    }
-  } catch (err) {
-    console.warn('Supabase profile touch:', err);
-  }
-
   return {
     success: true,
     target: cleanNumber,
@@ -416,7 +371,7 @@ export async function requestWhatsAppOtp(userId, newPhoneNumber) {
 }
 
 /**
- * 2. Verify WhatsApp OTP and update user profile in Supabase
+ * 2. Verify WhatsApp OTP and update user profile in Appwrite
  */
 export async function verifyWhatsAppOtp(userId, newPhoneNumber, submittedCode) {
   const key = `phone_${userId || 'current'}`;
@@ -431,14 +386,13 @@ export async function verifyWhatsAppOtp(userId, newPhoneNumber, submittedCode) {
     throw new Error('Invalid verification code. Please check the code and try again.');
   }
 
-  // Update Supabase public.profiles
+  // Update Appwrite user_profiles
   try {
-    await authUpdateProfile(userId, {
-      contact_info: newPhoneNumber,
-      whatsapp_contact: newPhoneNumber
+    await appwriteUpdateProfile(userId, {
+      contact_info: newPhoneNumber
     });
   } catch (err) {
-    console.warn('Supabase profile update warning:', err);
+    console.warn('Appwrite profile contact update warning:', err.message);
   }
 
   // Update local session storage
@@ -448,7 +402,6 @@ export async function verifyWhatsAppOtp(userId, newPhoneNumber, submittedCode) {
       const parsed = JSON.parse(rawUser);
       parsed.contact = newPhoneNumber;
       parsed.contact_info = newPhoneNumber;
-      parsed.whatsapp_contact = newPhoneNumber;
       localStorage.setItem('cs_user', JSON.stringify(parsed));
     }
   } catch {}
@@ -470,13 +423,6 @@ export async function requestEmailOtp(userId, newEmail) {
   const key = `email_${userId || 'current'}`;
   saveOtp(key, { target: cleanEmail, code });
 
-  // Initiate Supabase Auth email update
-  try {
-    await authUpdateEmail(cleanEmail);
-  } catch (err) {
-    console.warn('Supabase auth update email info:', err);
-  }
-
   return {
     success: true,
     target: cleanEmail,
@@ -485,7 +431,7 @@ export async function requestEmailOtp(userId, newEmail) {
 }
 
 /**
- * 4. Verify Email OTP and update email in Supabase
+ * 4. Verify Email OTP and update email in Appwrite
  */
 export async function verifyEmailOtp(userId, newEmail, submittedCode) {
   const key = `email_${userId || 'current'}`;
@@ -497,20 +443,16 @@ export async function verifyEmailOtp(userId, newEmail, submittedCode) {
   }
 
   if (record.code !== cleanSubmitted) {
-    try {
-      await authVerifyEmailOtp(newEmail, cleanSubmitted);
-    } catch {
-      throw new Error('Invalid verification code. Please check the code and try again.');
-    }
+    throw new Error('Invalid verification code. Please check the code and try again.');
   }
 
-  // Update Supabase profiles table
+  // Update Appwrite user_profiles
   try {
-    await authUpdateProfile(userId, {
+    await appwriteUpdateProfile(userId, {
       email: newEmail
     });
   } catch (err) {
-    console.warn('Supabase profile sync warning:', err);
+    console.warn('Appwrite profile email update warning:', err.message);
   }
 
   // Update local session storage
@@ -528,13 +470,12 @@ export async function verifyEmailOtp(userId, newEmail, submittedCode) {
 }
 
 /**
- * 5. Update user password via Supabase Auth
+ * 5. Update user password via Appwrite
  */
 export async function updateUserPassword(email, currentPassword, newPassword) {
   if (!newPassword || newPassword.length < 8) {
     throw new Error('New password must be at least 8 characters long.');
   }
 
-  return await authUpdatePassword(email, currentPassword, newPassword);
+  return await appwriteUpdatePassword(newPassword, currentPassword);
 }
-

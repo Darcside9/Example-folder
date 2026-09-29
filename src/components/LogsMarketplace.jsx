@@ -4,70 +4,17 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  fetchLiveLogs, 
-  getPlatformsCatalog, 
+  fetchAvailableAccountLogs, 
   dispenseSpecificAccountLog,
   downloadCredentialsFile
 } from '../lib/logsService';
 import { useAuth } from '../lib/AuthContext';
 import { siteConfig } from '../data/siteConfig';
+import BrandIcon from './BrandIcon';
 
-// Helper for rendering SVG brand icons
-function PlatformBrandIcon({ platformId, size = 20, className = '' }) {
-  const p = (platformId || '').toLowerCase();
-
-  if (p === 'facebook') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="Facebook">
-        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-      </svg>
-    );
-  }
-
-  if (p === 'tiktok') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="TikTok">
-        <path d="M12.525.02c1.31-.02 2.61-.01 3.91-.02.08 1.53.63 3.09 1.75 4.17 1.12 1.11 2.7 1.62 4.24 1.79v4.03c-1.44-.05-2.89-.35-4.2-.97-.57-.26-1.1-.59-1.62-.93-.01 2.92.01 5.84-.02 8.75-.08 1.4-.54 2.79-1.35 3.94-1.31 1.92-3.58 3.17-5.91 3.21-1.43.08-2.86-.31-4.08-1.03-2.02-1.19-3.44-3.37-3.65-5.71-.02-.5-.03-1-.01-1.49.18-1.9 1.12-3.72 2.58-4.96 1.66-1.44 3.98-2.13 6.15-1.72.02 1.48-.04 2.96-.04 4.44-.99-.32-2.15-.23-3.02.37-.63.41-1.11 1.04-1.36 1.75-.21.51-.24 1.07-.14 1.61.24 1.64 1.82 3.02 3.5 2.87 1.12-.01 2.19-.66 2.77-1.61.19-.33.4-.67.41-1.06.1-1.79.06-3.57.07-5.36.01-4.03-.01-8.05.02-12.07z"/>
-      </svg>
-    );
-  }
-
-  if (p === 'instagram') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-label="Instagram">
-        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
-        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/>
-        <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
-      </svg>
-    );
-  }
-
-  if (p === 'twitter') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-label="Twitter">
-        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-      </svg>
-    );
-  }
-
-  if (p === 'textplus') {
-    return (
-      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-label="Textplus">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-        <line x1="12" y1="8" x2="12" y2="14"/>
-        <line x1="9" y1="11" x2="15" y2="11"/>
-      </svg>
-    );
-  }
-
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-      <circle cx="8" cy="15" r="4"/>
-      <path d="M10.85 12.15L19 4"/>
-      <path d="M18 5l2 2"/>
-      <path d="M15 8l2 2"/>
-    </svg>
-  );
+// Helper for rendering authentic brand vector logo on sleek black badge
+function PlatformBrandIcon({ platformId, icon, size = 24, className = '' }) {
+  return <BrandIcon iconKey={icon || platformId} name={platformId} size={size} className={className} />;
 }
 
 export default function LogsMarketplace({ 
@@ -108,16 +55,15 @@ export default function LogsMarketplace({
     copiedField: null,
   });
 
-  // Fetch sanitized inventory catalog from live Google Sheet
+  // Fetch sanitized inventory catalog from Appwrite Cloud & Dispenser
   const loadInventory = async () => {
     setLoading(true);
     try {
-      const liveLogs = await fetchLiveLogs();
-      const catalog = getPlatformsCatalog(liveLogs);
+      const catalog = await fetchAvailableAccountLogs();
       setCategories(catalog);
     } catch (err) {
       console.error('Error loading logs catalog:', err);
-      if (onShowToast) onShowToast('Failed to sync live Google Sheets inventory.');
+      if (onShowToast) onShowToast('Failed to sync live Appwrite inventory.');
     } finally {
       setLoading(false);
     }
@@ -125,6 +71,13 @@ export default function LogsMarketplace({
 
   useEffect(() => {
     loadInventory();
+
+    const handlePlatformsUpdated = () => {
+      loadInventory();
+    };
+
+    window.addEventListener('platforms-updated', handlePlatformsUpdated);
+    return () => window.removeEventListener('platforms-updated', handlePlatformsUpdated);
   }, []);
 
   const toast = (msg) => {
@@ -160,12 +113,14 @@ export default function LogsMarketplace({
     }
 
     const availableAccounts = (subType.accounts || []).filter(a => a.isAvailable);
+    const firstAccount = availableAccounts[0] || null;
 
     setAccountSelectModal({
       isOpen: true,
       category,
       subType,
-      selectedUsername: availableAccounts[0]?.username || null,
+      selectedUsername: firstAccount?.username || null,
+      selectedAccount: firstAccount,
       searchFilter: '',
       loading: false,
       error: null,
@@ -182,7 +137,11 @@ export default function LogsMarketplace({
       const balance = Number(currentUser.balance || 0);
       const targetCategory = accountSelectModal.category;
       const targetSubType = accountSelectModal.subType;
-      const price = Number(targetCategory?.demoPrice || 1.50);
+      const dynamicPrice = Number(
+        accountSelectModal.selectedAccount?.price !== undefined 
+          ? accountSelectModal.selectedAccount.price 
+          : (targetSubType?.price !== undefined ? targetSubType.price : (targetCategory?.demoPrice || 1.50))
+      );
 
       const result = await dispenseSpecificAccountLog({
         username: accountSelectModal.selectedUsername,
@@ -191,7 +150,7 @@ export default function LogsMarketplace({
         userId: currentUser.id,
         userEmail: currentUser.email,
         currentBalance: balance,
-        price,
+        price: dynamicPrice,
       });
 
       // Refresh balance in auth context
@@ -373,7 +332,7 @@ export default function LogsMarketplace({
                   className={`logs-platform-pill ${selectedPlatform === cat.id ? 'active' : ''}`}
                   onClick={() => setSelectedPlatform(cat.id)}
                 >
-                  <PlatformBrandIcon platformId={cat.id} size={16} className="pill-brand-icon" />
+                  <PlatformBrandIcon platformId={cat.id} icon={cat.icon} size={16} className="pill-brand-icon" />
                   <span>{cat.name.replace(' Accounts', '')}</span>
                 </button>
               ))}
@@ -398,7 +357,7 @@ export default function LogsMarketplace({
           <div className="accszone-container">
             {loading && categories.length === 0 ? (
               <div className="accszone-loading">
-                <span className="waiting-dot-pulse mr-2" /> Syncing live catalog from Google Sheets...
+                <span className="waiting-dot-pulse mr-2" /> Syncing verified inventory from Appwrite Cloud...
               </div>
             ) : filteredCatalog.length === 0 ? (
               <div className="accszone-empty-search">
@@ -422,12 +381,7 @@ export default function LogsMarketplace({
                       aria-expanded={isExpanded}
                     >
                       <div className="accszone-cat-info">
-                        <div 
-                          className="accszone-cat-icon-badge"
-                          style={{ backgroundColor: cat.color || '#1877f2' }}
-                        >
-                          <PlatformBrandIcon platformId={cat.id} size={20} className="text-white" />
-                        </div>
+                        <BrandIcon iconKey={cat.icon || cat.id} name={cat.name} size={36} />
                         <div className="accszone-cat-titles">
                           <span className="accszone-cat-title">{headerTitle}</span>
                         </div>
@@ -489,12 +443,7 @@ export default function LogsMarketplace({
                                 >
                                   {/* Top / Left Section: Icon & Full Description */}
                                   <div className="accszone-item-main">
-                                    <div 
-                                      className="accszone-item-icon-box"
-                                      style={{ backgroundColor: cat.color || '#1877f2' }}
-                                    >
-                                      <PlatformBrandIcon platformId={cat.id} size={18} className="text-white" />
-                                    </div>
+                                    <BrandIcon iconKey={cat.icon || cat.id} name={cat.name} size={28} />
 
                                     <div className="accszone-item-content">
                                       <span className="accszone-item-title">
@@ -505,6 +454,9 @@ export default function LogsMarketplace({
 
                                   {/* Bottom / Right Section: Status Tag & CTA Button */}
                                   <div className="accszone-item-status-col">
+                                    <span className="accszone-price-tag font-mono">
+                                      {siteConfig.formatNaira(item.price !== undefined ? item.price : (cat.demoPrice || 1500))}
+                                    </span>
                                     <span className="accszone-item-tag">
                                       ✓ 2FA + Mail Access
                                     </span>
@@ -607,7 +559,11 @@ export default function LogsMarketplace({
                     <div
                       key={acc.id || acc.username || aIdx}
                       className={`account-select-item ${isSelected ? 'selected' : ''} ${!isAvailable ? 'disabled' : ''}`}
-                      onClick={() => isAvailable && setAccountSelectModal(prev => ({ ...prev, selectedUsername: acc.username }))}
+                      onClick={() => isAvailable && setAccountSelectModal(prev => ({ 
+                        ...prev, 
+                        selectedUsername: acc.username,
+                        selectedAccount: acc
+                      }))}
                     >
                       <div className="acc-item-left">
                         <div className={`acc-radio-circle ${isSelected ? 'checked' : ''}`}>
@@ -641,47 +597,72 @@ export default function LogsMarketplace({
             )}
 
             {/* Modal Footer / Checkout Bar */}
-            <div className="account-select-footer">
-              <div className="account-select-footer-meta">
-                <div className="footer-selected-line">
-                  <span className="meta-label">Selected Account:</span>
-                  <strong className="text-white">
-                    {accountSelectModal.selectedUsername ? `@${accountSelectModal.selectedUsername}` : 'None selected'}
-                  </strong>
-                </div>
-                <div className="footer-balance-line">
-                  <span className="meta-label">Your Wallet Balance:</span>
-                  <span className="font-mono text-cyan">${Number(currentUser?.balance || 0).toFixed(2)}</span>
-                </div>
-              </div>
+            {(() => {
+              const activePrice = Number(
+                accountSelectModal.selectedAccount?.price !== undefined
+                  ? accountSelectModal.selectedAccount.price
+                  : (accountSelectModal.subType?.price !== undefined 
+                      ? accountSelectModal.subType.price 
+                      : (accountSelectModal.category?.demoPrice || 1500))
+              );
+              const userBalance = Number(currentUser?.balance || 0);
+              const remainingBalance = Number((userBalance - activePrice).toFixed(2));
+              const hasSufficientBalance = userBalance >= activePrice;
 
-              {Number(currentUser?.balance || 0) < Number(accountSelectModal.category?.demoPrice || 1.50) ? (
-                <a 
-                  href={siteConfig.getWhatsAppTopUpUrl(10, currentUser?.email)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-action-primary"
-                >
-                  💬 Top Up via WhatsApp ($10)
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  className="btn-action-primary"
-                  disabled={accountSelectModal.loading || !accountSelectModal.selectedUsername}
-                  onClick={handleConfirmAccountPurchase}
-                >
-                  {accountSelectModal.loading ? (
-                    <>
-                      <span className="waiting-dot-pulse mr-2" />
-                      Dispensing &amp; Syncing Sheet...
-                    </>
+              return (
+                <div className="account-select-footer">
+                  <div className="account-select-footer-meta">
+                    <div className="footer-selected-line">
+                      <span className="meta-label">Selected Account:</span>
+                      <strong className="text-white">
+                        {accountSelectModal.selectedUsername ? `@${accountSelectModal.selectedUsername}` : 'None selected'}
+                      </strong>
+                    </div>
+                    <div className="footer-price-line">
+                      <span className="meta-label">Account Price:</span>
+                      <span className="font-mono text-green font-bold">{siteConfig.formatNaira(activePrice)}</span>
+                    </div>
+                    <div className="footer-balance-line">
+                      <span className="meta-label">Your Wallet Balance:</span>
+                      <span className="font-mono text-cyan">{siteConfig.formatNaira(userBalance)}</span>
+                    </div>
+                    <div className="footer-remaining-line">
+                      <span className="meta-label">Remaining After Purchase:</span>
+                      <span className={`font-mono font-bold ${hasSufficientBalance ? 'text-green' : 'text-danger'}`}>
+                        {siteConfig.formatNaira(remainingBalance)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {!hasSufficientBalance ? (
+                    <a 
+                      href={siteConfig.getWhatsAppTopUpUrl(2000, currentUser?.email)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-action-primary"
+                    >
+                      💬 Top Up via WhatsApp (₦2,000)
+                    </a>
                   ) : (
-                    'Confirm & Buy Selected Log 🔑'
+                    <button
+                      type="button"
+                      className="btn-action-primary"
+                      disabled={accountSelectModal.loading || !accountSelectModal.selectedUsername}
+                      onClick={handleConfirmAccountPurchase}
+                    >
+                      {accountSelectModal.loading ? (
+                        <>
+                          <span className="waiting-dot-pulse mr-2" />
+                          Dispensing &amp; Verifying Credentials...
+                        </>
+                      ) : (
+                        `Confirm & Buy Log (${siteConfig.formatNaira(activePrice)}) 🔑`
+                      )}
+                    </button>
                   )}
-                </button>
-              )}
-            </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

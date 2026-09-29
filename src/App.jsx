@@ -16,6 +16,7 @@ import UserDashboard from './components/UserDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
+import LoadingScreen from './components/LoadingScreen';
 import { useAuth } from './lib/AuthContext';
 import { useScrollReveal } from './hooks/useScrollReveal';
 

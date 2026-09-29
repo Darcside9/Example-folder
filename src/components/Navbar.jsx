@@ -110,14 +110,14 @@ export default function Navbar({ onOpenOrderModal }) {
                 <div className="user-session-wrapper">
                   <button type="button" className="user-pill-btn" onClick={() => setUserDropdownOpen(!userDropdownOpen)}>
                     <span className="user-avatar-circle">{(currentUser.email || 'U').charAt(0).toUpperCase()}</span>
-                    <span className="user-balance-pill">${Number(currentUser.balance || 0).toFixed(2)}</span>
+                    <span className="user-balance-pill">{siteConfig.formatNaira(currentUser.balance || 0)}</span>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
                   </button>
                   {userDropdownOpen && (
                     <div className="user-dropdown-menu">
                       <div className="user-dropdown-header">
                         <span className="user-dropdown-email">{currentUser.email}</span>
-                        <span className="user-dropdown-status">🟢 Verified User • ${Number(currentUser.balance || 0).toFixed(2)}</span>
+                        <span className="user-dropdown-status">🟢 Verified User • {siteConfig.formatNaira(currentUser.balance || 0)}</span>
                       </div>
                       <Link to="/dashboard" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>📊 User Dashboard</Link>
                       {isAdmin && <Link to="/admin" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>👑 Admin Panel</Link>}
@@ -181,7 +181,7 @@ export default function Navbar({ onOpenOrderModal }) {
                 <div className="mobile-user-box">
                   <div className="mobile-user-info">
                     <span className="user-email-label">{currentUser.email}</span>
-                    <span className="user-balance-badge">${Number(currentUser.balance || 0).toFixed(2)}</span>
+                    <span className="user-balance-badge">{siteConfig.formatNaira(currentUser.balance || 0)}</span>
                   </div>
                   <div className="mobile-nav-links-grid">
                     <Link to="/dashboard" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>📊 My Dashboard</Link>
