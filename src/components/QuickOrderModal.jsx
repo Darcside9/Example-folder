@@ -40,11 +40,11 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
   const currentPlan = pricingPlans.find((p) => p.id === selectedPlanId) || activePlans[0];
   const currentCountry = countries.find((c) => c.code === selectedCountryCode) || countries[0];
 
-  // Calculate pricing & balance
-  const unitPrice = parseFloat(currentPlan.price.replace('$', '')) || 0.18;
-  const totalPrice = (unitPrice * quantity).toFixed(2);
+  // Calculate pricing & balance in Nigerian Naira
+  const unitPrice = parseFloat(String(currentPlan.price).replace(/[^0-9.]/g, '')) || 250;
+  const totalPrice = unitPrice * quantity;
   const userBalance = Number(currentUser?.balance || 0);
-  const hasSufficientBalance = userBalance >= Number(totalPrice);
+  const hasSufficientBalance = userBalance >= totalPrice;
 
   const handleCreateOrder = async () => {
     if (!currentUser) {
@@ -54,7 +54,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
     }
 
     if (!hasSufficientBalance) {
-      setErrorMessage(`Insufficient balance ($${userBalance.toFixed(2)}). You need $${totalPrice} to allocate these numbers.`);
+      setErrorMessage(`Insufficient balance (${siteConfig.formatNaira(userBalance)}). You need ${siteConfig.formatNaira(totalPrice)} to allocate these numbers.`);
       return;
     }
 
@@ -180,7 +180,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                 <span className="allocated-label">Your Dedicated Number ({orderResult.service}):</span>
                 <strong className="allocated-digits">{orderResult.number}</strong>
                 <span className="allocated-meta">
-                  Order ID: {orderResult.orderId} • Cost: ${orderResult.cost} • Active for 15 mins
+                  Order ID: {orderResult.orderId} • Cost: {siteConfig.formatNaira(orderResult.cost)} • Active for 15 mins
                 </span>
               </div>
 
@@ -207,7 +207,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                 <div className="balance-info">
                   <span className="balance-label">Your Wallet Balance:</span>
                   <strong className={`balance-value ${hasSufficientBalance ? 'text-green' : 'text-danger'}`}>
-                    ${userBalance.toFixed(2)}
+                    {siteConfig.formatNaira(userBalance)}
                   </strong>
                 </div>
                 <a
@@ -228,7 +228,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                     <strong>Insufficient Wallet Balance</strong>
                   </div>
                   <p>
-                    This order requires <strong>${totalPrice}</strong>, but your wallet balance is <strong>${userBalance.toFixed(2)}</strong>. 
+                    This order requires <strong>{siteConfig.formatNaira(totalPrice)}</strong>, but your wallet balance is <strong>{siteConfig.formatNaira(userBalance)}</strong>. 
                     Please top up your wallet via WhatsApp to proceed with allocation.
                   </p>
                   <a
@@ -237,7 +237,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                     rel="noreferrer"
                     className="btn btn-whatsapp btn-sm btn-full"
                   >
-                    💬 Top Up via WhatsApp ($5, $10, $25, $50)
+                    💬 Top Up via WhatsApp (₦2,000, ₦5,000, ₦10,000)
                   </a>
                 </div>
               )}
@@ -278,7 +278,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
               </div>
 
               <div className="modal-form-group">
-                <label>Country / Carrier Region</label>
+                <label>Target Country</label>
                 <select
                   value={selectedCountryCode}
                   onChange={(e) => setSelectedCountryCode(e.target.value)}
@@ -286,15 +286,15 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                 >
                   {countries.map((c) => (
                     <option key={c.code} value={c.code}>
-                      {c.flag} {c.name} ({c.dialCode}) — Real Physical SIM
+                      {c.flag} {c.name} ({c.dialCode}) — Real SIM
                     </option>
                   ))}
                 </select>
               </div>
 
               <div className="modal-form-group">
-                <label>Quantity of Numbers</label>
-                <div className="quantity-counter">
+                <label>Number Quantity</label>
+                <div className="counter-row">
                   <button
                     type="button"
                     className="counter-btn"
@@ -329,7 +329,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                 </div>
                 <div className="summary-row total-row">
                   <span>Total Due:</span>
-                  <span className="total-amount">${totalPrice}</span>
+                  <span className="total-amount">{siteConfig.formatNaira(totalPrice)}</span>
                 </div>
               </div>
 
@@ -348,7 +348,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                   <span>Insufficient Balance — Top Up to Order</span>
                 ) : (
                   <>
-                    <span>Confirm &amp; Deduct ${totalPrice} from Balance</span>
+                    <span>Confirm &amp; Deduct {siteConfig.formatNaira(totalPrice)} from Balance</span>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                       <polyline points="9 18 15 12 9 6"/>
                     </svg>

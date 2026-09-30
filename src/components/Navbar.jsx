@@ -6,15 +6,11 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 
 export default function Navbar({ onOpenOrderModal }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [lang, setLang] = useState('EN');
-  const [langDropdownOpen, setLangDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   
   const { currentUser, logout, isAdmin } = useAuth();
   const location = useLocation();
-  const isDesktop = useMediaQuery('(min-width: 768px)');
-
-  const languages = ['EN', 'ES', 'FR', 'DE', 'PT', 'RU', 'ZH'];
+  const isDesktop = useMediaQuery('(min-width: 960px)');
 
   const closeMenu = () => {
     setMobileMenuOpen(false);
@@ -37,28 +33,28 @@ export default function Navbar({ onOpenOrderModal }) {
       <Link to="/" onClick={closeMenu} className={location.pathname === '/' ? 'active-link' : ''}>Home</Link>
       {currentUser && (
         <>
-          <Link to="/dashboard" onClick={closeMenu} className={location.pathname === '/dashboard' ? 'active-link' : ''}>📊 Dashboard</Link>
+          <Link to="/dashboard" onClick={closeMenu} className={location.pathname === '/dashboard' ? 'active-link' : ''}>Dashboard</Link>
           {isAdmin && (
-            <Link to="/admin" onClick={closeMenu} className={location.pathname === '/admin' ? 'active-link text-cyan' : 'text-cyan'}>👑 Admin Panel</Link>
+            <Link to="/admin" onClick={closeMenu} className={location.pathname === '/admin' ? 'active-link text-cyan' : 'text-cyan'}>Admin Panel</Link>
           )}
         </>
       )}
       {location.pathname === '/' ? (
         <>
-          <a href="#logs-marketplace" onClick={closeMenu}>🔑 Account Logs</a>
+          <a href="#logs-marketplace" onClick={closeMenu}>Account Logs</a>
           <a href="#services" onClick={closeMenu}>Services</a>
           <a href="#pricing" onClick={closeMenu}>Pricing</a>
           <a href="#faq" onClick={closeMenu}>FAQ</a>
         </>
       ) : (
         <>
-          <Link to="/#logs-marketplace" onClick={closeMenu}>🔑 Account Logs</Link>
+          <Link to="/#logs-marketplace" onClick={closeMenu}>Account Logs</Link>
           <Link to="/#services" onClick={closeMenu}>Services</Link>
           <Link to="/#pricing" onClick={closeMenu}>Pricing</Link>
           <Link to="/#faq" onClick={closeMenu}>FAQ</Link>
         </>
       )}
-      <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer" onClick={closeMenu}>💬 WhatsApp Support</a>
+      <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer" onClick={closeMenu}>WhatsApp Support</a>
     </>
   );
 
@@ -74,16 +70,8 @@ export default function Navbar({ onOpenOrderModal }) {
   return (
     <header className="site-header">
       <div className="header-container">
-        <Link to="/" className="brand" onClick={closeMenu} aria-label="Chris Shopper Home">
-          <span className="brand-badge">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>
-              <path d="M14 2v4"/>
-              <path d="M18 6l3-3"/>
-              <path d="M18 2h4"/>
-            </svg>
-          </span>
-          <span className="brand-text">Chris <span className="brand-highlight">Shopper</span></span>
+        <Link to="/" className="brand brand-full" onClick={closeMenu} aria-label="Chris Shopper Home">
+          <img src="/full_logo.svg" alt="Chris Shopper Gateway" className="brand-logo-full" />
         </Link>
 
         {isDesktop ? (
@@ -93,19 +81,6 @@ export default function Navbar({ onOpenOrderModal }) {
               {renderLinks()}
             </nav>
             <div className="header-actions">
-              <div className="lang-selector-wrapper">
-                <button className="lang-btn" type="button" onClick={() => setLangDropdownOpen(!langDropdownOpen)}>
-                  <span>🌐 {lang}</span>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-                {langDropdownOpen && (
-                  <div className="lang-dropdown">
-                    {languages.map((l) => (
-                      <button key={l} type="button" className={`lang-option ${lang === l ? 'active' : ''}`} onClick={() => { setLang(l); setLangDropdownOpen(false); }}>{l}</button>
-                    ))}
-                  </div>
-                )}
-              </div>
               {currentUser ? (
                 <div className="user-session-wrapper">
                   <button type="button" className="user-pill-btn" onClick={() => setUserDropdownOpen(!userDropdownOpen)}>
@@ -117,13 +92,13 @@ export default function Navbar({ onOpenOrderModal }) {
                     <div className="user-dropdown-menu">
                       <div className="user-dropdown-header">
                         <span className="user-dropdown-email">{currentUser.email}</span>
-                        <span className="user-dropdown-status">🟢 Verified User • {siteConfig.formatNaira(currentUser.balance || 0)}</span>
+                        <span className="user-dropdown-status"><span className="pulse-indicator" style={{ display: 'inline-block', width: 6, height: 6, marginRight: 6 }} />Verified User • {siteConfig.formatNaira(currentUser.balance || 0)}</span>
                       </div>
-                      <Link to="/dashboard" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>📊 User Dashboard</Link>
-                      {isAdmin && <Link to="/admin" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>👑 Admin Panel</Link>}
-                      <button type="button" className="user-dropdown-item" onClick={() => { setUserDropdownOpen(false); if (onOpenOrderModal) onOpenOrderModal(); }}>⚡ Buy Number</button>
-                      <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>💬 WhatsApp Support</a>
-                      <button type="button" className="user-dropdown-item text-danger" onClick={() => { setUserDropdownOpen(false); logout(); }}>🚪 Sign Out</button>
+                      <Link to="/dashboard" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>User Dashboard</Link>
+                      {isAdmin && <Link to="/admin" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>Admin Panel</Link>}
+                      <button type="button" className="user-dropdown-item" onClick={() => { setUserDropdownOpen(false); if (onOpenOrderModal) onOpenOrderModal(); }}>Buy Number</button>
+                      <a href={siteConfig.whatsappUrl} target="_blank" rel="noreferrer" className="user-dropdown-item" onClick={() => setUserDropdownOpen(false)}>WhatsApp Support</a>
+                      <button type="button" className="user-dropdown-item text-danger" onClick={() => { setUserDropdownOpen(false); logout(); }}>Sign Out</button>
                     </div>
                   )}
                 </div>
@@ -168,15 +143,6 @@ export default function Navbar({ onOpenOrderModal }) {
             </nav>
             
             <div className="mobile-drawer-footer">
-              <div className="lang-selector-wrapper-mobile">
-                <span className="lang-label">Language:</span>
-                <div className="lang-buttons-row">
-                  {languages.slice(0, 4).map((l) => (
-                    <button key={l} type="button" className={`lang-option-mobile ${lang === l ? 'active' : ''}`} onClick={() => setLang(l)}>{l}</button>
-                  ))}
-                </div>
-              </div>
-
               {currentUser ? (
                 <div className="mobile-user-box">
                   <div className="mobile-user-info">
@@ -184,10 +150,10 @@ export default function Navbar({ onOpenOrderModal }) {
                     <span className="user-balance-badge">{siteConfig.formatNaira(currentUser.balance || 0)}</span>
                   </div>
                   <div className="mobile-nav-links-grid">
-                    <Link to="/dashboard" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>📊 My Dashboard</Link>
-                    {isAdmin && <Link to="/admin" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>👑 Admin Panel</Link>}
+                    <Link to="/dashboard" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>User Dashboard</Link>
+                    {isAdmin && <Link to="/admin" className="btn btn-secondary btn-sm btn-full" onClick={closeMenu}>Admin Panel</Link>}
                   </div>
-                  <button type="button" className="btn btn-ghost btn-sm btn-full text-danger" onClick={() => { closeMenu(); logout(); }}>🚪 Sign Out</button>
+                  <button type="button" className="btn btn-ghost btn-sm btn-full text-danger" onClick={() => { closeMenu(); logout(); }}>Sign Out</button>
                 </div>
               ) : (
                 <div className="mobile-auth-btn-grid">

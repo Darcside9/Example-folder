@@ -20,7 +20,7 @@ import {
 } from '../lib/dashboardService';
 import { siteConfig } from '../data/siteConfig';
 import LogsMarketplace from './LogsMarketplace';
-import { getPurchasedLogs, downloadCredentialsFile } from '../lib/logsService';
+import { getPurchasedLogs, fetchUserPurchasedLogs, downloadCredentialsFile, getLogExpiryInfo } from '../lib/logsService';
 
 export default function UserDashboard({ user, onSignOut }) {
   const navigate = useNavigate();
@@ -103,10 +103,11 @@ export default function UserDashboard({ user, onSignOut }) {
     async function loadData() {
       setLoading(true);
       try {
-        const [srvs, profile, userOrders] = await Promise.all([
+        const [srvs, profile, userOrders, userLogs] = await Promise.all([
           getServices(),
           user?.id ? getUserProfile(user.id) : null,
-          user?.id ? getUserOrders(user.id) : []
+          user?.id ? getUserOrders(user.id) : [],
+          user?.id ? fetchUserPurchasedLogs(user.id) : getPurchasedLogs(user?.id)
         ]);
 
         setServices(srvs);
@@ -119,8 +120,8 @@ export default function UserDashboard({ user, onSignOut }) {
         const pending = userOrders.filter(o => o.status === 'pending' || o.status === 'code_received');
         setActiveLines(pending);
 
-        // Load purchased account logs
-        setPurchasedLogsList(getPurchasedLogs(user?.id));
+        // Load purchased account logs from Appwrite Cloud DB + local cache
+        setPurchasedLogsList(userLogs);
       } catch (err) {
         console.error('Error loading dashboard data:', err);
       } finally {
@@ -186,7 +187,7 @@ export default function UserDashboard({ user, onSignOut }) {
     try {
       showToast(`Allocating ${service.name} number line...`);
       const { order, newBalance } = await allocateNumberLine({
-        userId: user?.id || 'demo_user',
+        userId: user?.id || 'guest_user',
         service,
         country: 'us',
         currentBalance: balance
@@ -229,8 +230,8 @@ export default function UserDashboard({ user, onSignOut }) {
   const handleCancelLine = async (line) => {
     const newBal = await cancelAndRefundOrder({
       orderId: line.id,
-      userId: user?.id || 'demo_user',
-      cost: Number(line.cost) || 0.18,
+      userId: user?.id || 'guest_user',
+      cost: Number(line.cost) || 250,
       currentBalance: balance
     });
 
@@ -446,19 +447,17 @@ export default function UserDashboard({ user, onSignOut }) {
           SIDEBAR NAVIGATION (MTELSMS EXACT ARCHITECTURE)
           ==================================================================== */}
       <aside className={`mtel-sidebar ${sidebarOpen ? 'sidebar-mobile-open' : ''}`}>
-        {/* Brand & Language */}
+        {/* Brand Header */}
         <div className="sidebar-brand-row">
           <a onClick={() => navigate('/')} className="mtel-brand cursor-pointer">
-            <span className="brand-chris">Chris</span>
-            <span className="brand-highlight">Shopper</span>
-            <span className="brand-sms-pill">GATEWAY</span>
+            <img src="/bag_logo.svg" alt="Chris Shopper" className="brand-logo-img" />
+            <div className="brand-text-col">
+              <span className="brand-title-line">
+                <span className="brand-chris">Chris</span> <span className="brand-highlight">Shopper</span>
+              </span>
+              <span className="brand-gateway-badge">GATEWAY</span>
+            </div>
           </a>
-          <button className="sidebar-lang-btn" type="button">
-            <span>EN</span>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M6 9l6 6 6-6"/>
-            </svg>
-          </button>
         </div>
 
         {/* Current Balance Box */}
@@ -613,7 +612,8 @@ export default function UserDashboard({ user, onSignOut }) {
           </button>
 
           <div className="mobile-brand-title">
-            <span className="brand-chris">Chris</span> <span className="brand-highlight">Shopper</span>
+            <img src="/bag_logo.svg" alt="Chris Shopper" className="mobile-brand-logo" />
+            <span><span className="brand-chris">Chris</span> <span className="brand-highlight">Shopper</span></span>
           </div>
 
           <div className="mobile-balance-pill" onClick={() => setShowTopUpModal(true)}>
@@ -909,8 +909,17 @@ export default function UserDashboard({ user, onSignOut }) {
             <LogsMarketplace 
               isDashboard={true}
               onShowToast={showToast}
+              onNavigateTab={(tab, subTab) => {
+                setActiveTab(tab);
+                if (subTab) setHistorySubTab(subTab);
+                if (currentUser?.id) {
+                  fetchUserPurchasedLogs(currentUser.id).then(logs => setPurchasedLogsList(logs));
+                }
+              }}
               onPurchaseComplete={(newCred) => {
-                setPurchasedLogsList(getPurchasedLogs(currentUser?.id));
+                if (currentUser?.id) {
+                  fetchUserPurchasedLogs(currentUser.id).then(logs => setPurchasedLogsList(logs));
+                }
                 try {
                   const raw = localStorage.getItem('cs_user');
                   if (raw) {
@@ -935,7 +944,7 @@ export default function UserDashboard({ user, onSignOut }) {
         {activeTab === 'history' && (
           <div className="dash-sub-view">
             <div className="sub-view-header">
-              <h2>Order & Dispense History</h2>
+              <h2>Order &amp; Dispense History</h2>
               <p>Complete historical log of your carrier number verifications and purchased account credentials.</p>
             </div>
 
@@ -951,7 +960,12 @@ export default function UserDashboard({ user, onSignOut }) {
               <button 
                 type="button" 
                 className={`btn-service-filter ${historySubTab === 'logs' ? 'active' : ''}`}
-                onClick={() => setHistorySubTab('logs')}
+                onClick={() => {
+                  setHistorySubTab('logs');
+                  if (currentUser?.id) {
+                    fetchUserPurchasedLogs(currentUser.id).then(logs => setPurchasedLogsList(logs));
+                  }
+                }}
               >
                 🔑 Purchased Account Logs ({purchasedLogsList.length})
               </button>
@@ -996,7 +1010,7 @@ export default function UserDashboard({ user, onSignOut }) {
                               <span className="text-muted">-</span>
                             )}
                           </td>
-                          <td className="font-mono">${Number(order.cost || 0).toFixed(2)}</td>
+                          <td className="font-mono">{siteConfig.formatNaira(order.cost || 0)}</td>
                           <td>
                             <span className={`status-pill pill-${order.status}`}>
                               {order.status}
@@ -1010,142 +1024,158 @@ export default function UserDashboard({ user, onSignOut }) {
                 </table>
               </div>
             ) : (
-              <div className="dash-table-card">
-                <table className="dash-table">
-                  <thead>
-                    <tr>
-                      <th>PLATFORM</th>
-                      <th>USERNAME / UID</th>
-                      <th>PASSWORD</th>
-                      <th>2FA SECRET</th>
-                      <th>MAIL / EMAIL PASS</th>
-                      <th>DEMO PRICE</th>
-                      <th>PURCHASED</th>
-                      <th>ACTIONS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {purchasedLogsList.length === 0 ? (
+              <>
+                <div className="history-retention-banner">
+                  <span className="banner-clock-icon">⏰</span>
+                  <span>
+                    <strong>30-Day Auto-Purge Policy:</strong> For customer privacy and data security, purchased account credentials are kept for exactly 30 days from purchase. Please make sure to save or download your credentials before they expire.
+                  </span>
+                </div>
+
+                <div className="dash-table-card">
+                  <table className="dash-table">
+                    <thead>
                       <tr>
-                        <td colSpan="8" className="text-center py-6 text-muted">
-                          No account logs purchased yet. 
-                          <button 
-                            className="link-cyan" 
-                            style={{ marginLeft: '8px', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
-                            onClick={() => setActiveTab('logs')}
-                          >
-                            Explore Account Logs →
-                          </button>
-                        </td>
+                        <th>PLATFORM</th>
+                        <th>USERNAME / UID</th>
+                        <th>PASSWORD</th>
+                        <th>2FA SECRET</th>
+                        <th>MAIL / EMAIL PASS</th>
+                        <th>PRICE</th>
+                        <th>PURCHASED</th>
+                        <th>30-DAY COUNTDOWN</th>
+                        <th>ACTIONS</th>
                       </tr>
-                    ) : (
-                      purchasedLogsList.map((log) => {
-                        const isPwRevealed = revealedPasswords[log.id];
-                        return (
-                          <tr key={log.id}>
-                            <td><strong>{log.platform}</strong></td>
-                            <td className="font-mono">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span>{log.username}</span>
-                                <button 
-                                  className="btn-cell-copy"
-                                  onClick={() => copyToClipboard(log.username, 'Username')}
-                                >
-                                  Copy
-                                </button>
-                              </div>
-                            </td>
-                            <td className="font-mono">
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <span>{isPwRevealed ? log.password : '••••••••'}</span>
-                                <button 
-                                  className="btn-cell-copy"
-                                  onClick={() => setRevealedPasswords(prev => ({ ...prev, [log.id]: !prev[log.id] }))}
-                                >
-                                  {isPwRevealed ? 'Hide' : 'Show'}
-                                </button>
-                                <button 
-                                  className="btn-cell-copy"
-                                  onClick={() => copyToClipboard(log.password, 'Password')}
-                                >
-                                  Copy
-                                </button>
-                              </div>
-                            </td>
-                            <td className="font-mono" style={{ fontSize: '0.78rem' }}>
-                              {log.twoFactorKey ? (
+                    </thead>
+                    <tbody>
+                      {purchasedLogsList.length === 0 ? (
+                        <tr>
+                          <td colSpan="9" className="text-center py-6 text-muted">
+                            No account logs purchased yet. 
+                            <button 
+                              className="link-cyan" 
+                              style={{ marginLeft: '8px', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                              onClick={() => setActiveTab('logs')}
+                            >
+                              Explore Account Logs →
+                            </button>
+                          </td>
+                        </tr>
+                      ) : (
+                        purchasedLogsList.map((log) => {
+                          const isPwRevealed = revealedPasswords[log.id];
+                          const expiry = getLogExpiryInfo(log.purchasedAt);
+                          return (
+                            <tr key={log.id}>
+                              <td><strong>{log.platform}</strong></td>
+                              <td className="font-mono">
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                  <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {log.twoFactorKey}
-                                  </span>
+                                  <span>{log.username}</span>
                                   <button 
                                     className="btn-cell-copy"
-                                    onClick={() => copyToClipboard(log.twoFactorKey, '2FA Key')}
+                                    onClick={() => copyToClipboard(log.username, 'Username')}
                                   >
                                     Copy
                                   </button>
                                 </div>
-                              ) : '-'}
-                            </td>
-                            <td className="font-mono" style={{ fontSize: '0.78rem' }}>
-                              {log.mail ? (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              </td>
+                              <td className="font-mono">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <span>{isPwRevealed ? log.password : '••••••••'}</span>
+                                  <button 
+                                    className="btn-cell-copy"
+                                    onClick={() => setRevealedPasswords(prev => ({ ...prev, [log.id]: !prev[log.id] }))}
+                                  >
+                                    {isPwRevealed ? 'Hide' : 'Show'}
+                                  </button>
+                                  <button 
+                                    className="btn-cell-copy"
+                                    onClick={() => copyToClipboard(log.password, 'Password')}
+                                  >
+                                    Copy
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="font-mono" style={{ fontSize: '0.78rem' }}>
+                                {log.twoFactorKey ? (
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                      {log.mail}
+                                    <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                      {log.twoFactorKey}
                                     </span>
                                     <button 
                                       className="btn-cell-copy"
-                                      onClick={() => copyToClipboard(log.mail, 'Email')}
+                                      onClick={() => copyToClipboard(log.twoFactorKey, '2FA Key')}
                                     >
                                       Copy
                                     </button>
                                   </div>
-                                  {log.mailPassword && (
-                                    <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      <span>Pass: {isPwRevealed ? log.mailPassword : '••••••'}</span>
+                                ) : '-'}
+                              </td>
+                              <td className="font-mono" style={{ fontSize: '0.78rem' }}>
+                                {log.mail ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                      <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {log.mail}
+                                      </span>
                                       <button 
                                         className="btn-cell-copy"
-                                        onClick={() => copyToClipboard(log.mailPassword, 'Mail Pass')}
+                                        onClick={() => copyToClipboard(log.mail, 'Email')}
                                       >
                                         Copy
                                       </button>
                                     </div>
-                                  )}
+                                    {log.mailPassword && (
+                                      <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span>Pass: {isPwRevealed ? log.mailPassword : '••••••'}</span>
+                                        <button 
+                                          className="btn-cell-copy"
+                                          onClick={() => copyToClipboard(log.mailPassword, 'Mail Pass')}
+                                        >
+                                          Copy
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : '-'}
+                              </td>
+                              <td className="font-mono font-bold" style={{ color: '#4ade80' }}>
+                                {siteConfig.formatNaira(log.price !== undefined ? log.price : 1500)}
+                              </td>
+                              <td style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                {new Date(log.purchasedAt || Date.now()).toLocaleDateString()}
+                              </td>
+                              <td>
+                                <span className={`countdown-badge-pill ${expiry.badgeClass}`}>
+                                  {expiry.label}
+                                </span>
+                              </td>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  <button 
+                                    className="btn-simulate-tiny"
+                                    onClick={() => copyToClipboard(log.comboString, 'Combo String')}
+                                    title="Copy Combo"
+                                  >
+                                    📋 Combo
+                                  </button>
+                                  <button 
+                                    className="btn-cell-copy"
+                                    onClick={() => downloadCredentialsFile(log)}
+                                    title="Download credentials file"
+                                  >
+                                    ⬇️ .txt
+                                  </button>
                                 </div>
-                              ) : '-'}
-                            </td>
-                            <td className="font-mono" style={{ color: '#00e5ff' }}>
-                              ${Number(log.price || 1.50).toFixed(2)}
-                            </td>
-                            <td style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                              {new Date(log.purchasedAt || Date.now()).toLocaleDateString()}
-                            </td>
-                            <td>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                <button 
-                                  className="btn-simulate-tiny"
-                                  onClick={() => copyToClipboard(log.comboString, 'Combo String')}
-                                  title="Copy Combo"
-                                >
-                                  📋 Combo
-                                </button>
-                                <button 
-                                  className="btn-cell-copy"
-                                  onClick={() => downloadCredentialsFile(log)}
-                                  title="Download credentials file"
-                                >
-                                  ⬇️ .txt
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         )}
@@ -1194,7 +1224,7 @@ export default function UserDashboard({ user, onSignOut }) {
               </div>
               <div className="overview-item">
                 <span className="overview-label">AVAILABLE BALANCE</span>
-                <span className="overview-val text-green font-mono">${balance.toFixed(2)}</span>
+                <span className="overview-val text-green font-mono">{siteConfig.formatNaira(balance)}</span>
               </div>
               <div className="overview-item">
                 <span className="overview-label">SECURITY STATUS</span>
@@ -1220,12 +1250,12 @@ export default function UserDashboard({ user, onSignOut }) {
                   <span className="cred-label">CURRENT VERIFIED NUMBER</span>
                   <div className="cred-val-row">
                     <span className="cred-val font-mono">
-                      {currentUser?.whatsapp_contact || currentUser?.contact_info || currentUser?.contact || '+1 (202) 555-0143'}
+                      {currentUser?.whatsapp_contact || currentUser?.contact_info || currentUser?.contact || siteConfig.formattedPhone}
                     </span>
                     <button 
                       type="button" 
                       className="btn-copy-cred"
-                      onClick={() => copyToClipboard(currentUser?.whatsapp_contact || currentUser?.contact_info || currentUser?.contact || '+1 (202) 555-0143', 'WhatsApp Number')}
+                      onClick={() => copyToClipboard(currentUser?.whatsapp_contact || currentUser?.contact_info || currentUser?.contact || siteConfig.formattedPhone, 'WhatsApp Number')}
                     >
                       Copy
                     </button>
@@ -1267,11 +1297,11 @@ export default function UserDashboard({ user, onSignOut }) {
                 <div className="current-credential-box">
                   <span className="cred-label">CURRENT EMAIL ADDRESS</span>
                   <div className="cred-val-row">
-                    <span className="cred-val font-mono">{currentUser?.email || 'user@chrisshopper.com'}</span>
+                    <span className="cred-val font-mono">{currentUser?.email || siteConfig.adminEmail}</span>
                     <button 
                       type="button" 
                       className="btn-copy-cred"
-                      onClick={() => copyToClipboard(currentUser?.email || 'user@chrisshopper.com', 'Email Address')}
+                      onClick={() => copyToClipboard(currentUser?.email || siteConfig.adminEmail, 'Email Address')}
                     >
                       Copy
                     </button>

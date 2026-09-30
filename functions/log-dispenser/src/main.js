@@ -187,11 +187,18 @@ export default async ({ req, res, log, error }) => {
         price: requiredPrice,
         status: 'completed',
         details: JSON.stringify({
-          platform: platformId,
+          platform: platformId.charAt(0).toUpperCase() + platformId.slice(1),
+          platformId: platformId,
           username: targetDoc.username,
           subTypeId: targetDoc.sub_type_id,
+          subTypeTitle: targetDoc.sub_type_title || '',
           price: requiredPrice,
-          newBalance: newBalance
+          newBalance: newBalance,
+          password: targetDoc.password,
+          twoFactorKey: targetDoc.two_factor_key || '',
+          mail: targetDoc.mail || '',
+          mailPassword: targetDoc.mail_password || '',
+          comboString: `${targetDoc.username}:${targetDoc.password}:${targetDoc.mail || ''}:${targetDoc.mail_password || ''}:${targetDoc.two_factor_key || ''}`
         })
       });
 

@@ -103,3 +103,13 @@ scratch/
 supabase/.branches/
 supabase/.temp/
 stats.json
+
+# Local test screenshots & QA artifacts
+/*.png
+screenshots/
+
+# AI assistant session logs & cache
+.antigravity/
+.gemini/
+.system_generated/
+

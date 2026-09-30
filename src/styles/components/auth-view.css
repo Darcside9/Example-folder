@@ -39,7 +39,27 @@
 
 .auth-brand {
   margin: 0;
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.auth-brand .brand-logo-full {
+  height: 50px;
+  width: auto;
+  object-fit: contain;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.auth-brand:hover .brand-logo-full {
+  transform: scale(1.02);
+  filter: drop-shadow(0 4px 16px rgba(56, 189, 248, 0.3));
+}
+
+@media (max-width: 639px) {
+  .auth-brand .brand-logo-full {
+    height: 40px;
+  }
 }
 
 .auth-container {

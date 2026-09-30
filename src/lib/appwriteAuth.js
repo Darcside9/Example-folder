@@ -5,9 +5,10 @@
 // ==========================================================================
 
 import { account, databases, APPWRITE_CONFIG, ID, Query } from './appwrite';
+import { ADMIN_CONTACT } from '../data/siteConfig';
 
 const SESSION_USER_KEY = 'cs_user';
-const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || 'darcside999@gmail.com').toLowerCase();
+const ADMIN_EMAIL = (import.meta.env.VITE_ADMIN_EMAIL || ADMIN_CONTACT.adminEmail || 'darcside999@gmail.com').toLowerCase();
 
 /**
  * Helper to get currently cached session user from localStorage

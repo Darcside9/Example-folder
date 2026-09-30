@@ -4,6 +4,7 @@
 // ==========================================================================
 
 import { databases, APPWRITE_CONFIG, Query, ID } from './appwrite';
+import { siteConfig } from '../data/siteConfig';
 import { 
   appwriteGetUserProfile, 
   appwriteGetAllUsers, 
@@ -14,10 +15,10 @@ import {
 
 // Default / fallback services catalog matching Chris Shopper specification
 export const DEFAULT_SERVICES = [
-  { id: 'telegram', name: 'Telegram', code: 'tg', category: 'messaging', retailPrice: 0.35, price: 0.18, is_active: true, carrier_speed: '< 3.2s' },
-  { id: 'whatsapp', name: 'WhatsApp', code: 'wa', category: 'messaging', retailPrice: 0.40, price: 0.20, is_active: true, carrier_speed: '< 4.1s' },
-  { id: 'openai', name: 'OpenAI / ChatGPT', code: 'oa', category: 'ai', retailPrice: 0.50, price: 0.25, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'google', name: 'Google & Gmail', code: 'go', category: 'email', retailPrice: 0.45, price: 0.22, is_active: false, carrier_speed: 'Coming Soon' },
+  { id: 'telegram', name: 'Telegram', code: 'tg', category: 'messaging', retailPrice: 500, price: 300, is_active: true, carrier_speed: '< 3.2s' },
+  { id: 'whatsapp', name: 'WhatsApp', code: 'wa', category: 'messaging', retailPrice: 600, price: 350, is_active: true, carrier_speed: '< 4.1s' },
+  { id: 'openai', name: 'OpenAI / ChatGPT', code: 'oa', category: 'ai', retailPrice: 400, price: 250, is_active: false, carrier_speed: 'Coming Soon' },
+  { id: 'google', name: 'Google & Gmail', code: 'go', category: 'email', retailPrice: 350, price: 200, is_active: false, carrier_speed: 'Coming Soon' },
 ];
 
 /**
@@ -61,14 +62,20 @@ export async function getUserProfile(userId) {
 }
 
 /**
- * Fetch user active & historical orders from Appwrite orders
+ * Fetch user active & historical SMS number rental orders from Appwrite orders.
+ * Strictly filters by product_type === 'sms_service' so account logs never mix in.
  */
 export async function getUserOrders(userId) {
   try {
     const res = await databases.listDocuments(
       APPWRITE_CONFIG.databaseId,
       APPWRITE_CONFIG.collections.orders,
-      [Query.equal('user_id', userId), Query.orderDesc('$createdAt'), Query.limit(50)]
+      [
+        Query.equal('user_id', userId),
+        Query.equal('product_type', 'sms_service'),
+        Query.orderDesc('$createdAt'),
+        Query.limit(50)
+      ]
     );
 
     return res.documents.map(d => ({
@@ -82,8 +89,115 @@ export async function getUserOrders(userId) {
       details: d.details
     }));
   } catch (err) {
-    console.warn('Error fetching orders from Appwrite:', err.message);
-    return [];
+    // Fallback if compound index is pending: filter in memory
+    try {
+      const fallback = await databases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.orders,
+        [Query.equal('user_id', userId), Query.orderDesc('$createdAt'), Query.limit(50)]
+      );
+      return fallback.documents
+        .filter(d => d.product_type === 'sms_service')
+        .map(d => ({
+          id: d.$id,
+          user_id: d.user_id,
+          service_name: d.item_name,
+          phone_number: d.reference,
+          cost: Number(d.price || 0),
+          status: d.status,
+          created_at: d.$createdAt,
+          details: d.details
+        }));
+    } catch (fallbackErr) {
+      console.warn('Error fetching orders from Appwrite:', err.message);
+      return [];
+    }
+  }
+}
+
+/**
+ * Fetch user historical purchased account logs from Appwrite orders
+ */
+export async function getUserLogOrders(userId) {
+  try {
+    const res = await databases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      APPWRITE_CONFIG.collections.orders,
+      [
+        Query.equal('user_id', userId),
+        Query.equal('product_type', 'account_log'),
+        Query.orderDesc('$createdAt'),
+        Query.limit(100)
+      ]
+    );
+
+    return res.documents.map(d => {
+      let det = {};
+      try {
+        if (d.details) det = typeof d.details === 'string' ? JSON.parse(d.details) : d.details;
+      } catch {}
+
+      const platformName = det.platform 
+        ? det.platform.charAt(0).toUpperCase() + det.platform.slice(1)
+        : (d.item_name ? d.item_name.split(' ')[0] : 'Account');
+
+      return {
+        id: d.$id,
+        platform: platformName,
+        platformId: det.platformId || det.platform || 'account',
+        subTypeId: det.subTypeId || '',
+        subTypeTitle: det.subTypeTitle || d.item_name || '',
+        username: det.username || d.reference,
+        password: det.password || '',
+        twoFactorKey: det.twoFactorKey || '',
+        mail: det.mail || '',
+        mailPassword: det.mailPassword || '',
+        comboString: det.comboString || `${det.username || d.reference}:${det.password || ''}`,
+        price: Number(d.price || 0),
+        purchasedAt: d.$createdAt,
+        userId: d.user_id
+      };
+    });
+  } catch (err) {
+    try {
+      const fallback = await databases.listDocuments(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.orders,
+        [Query.equal('user_id', userId), Query.orderDesc('$createdAt'), Query.limit(100)]
+      );
+      return fallback.documents
+        .filter(d => d.product_type === 'account_log')
+        .map(d => {
+          let det = {};
+          try {
+            if (d.details) det = typeof d.details === 'string' ? JSON.parse(d.details) : d.details;
+          } catch {}
+
+          const platformName = det.platform 
+            ? det.platform.charAt(0).toUpperCase() + det.platform.slice(1)
+            : (d.item_name ? d.item_name.split(' ')[0] : 'Account');
+
+          return {
+            id: d.$id,
+            platform: platformName,
+            platformId: det.platformId || det.platform || 'account',
+            subTypeId: det.subTypeId || '',
+            subTypeTitle: det.subTypeTitle || d.item_name || '',
+            username: det.username || d.reference,
+            password: det.password || '',
+            twoFactorKey: det.twoFactorKey || '',
+            mail: det.mail || '',
+            mailPassword: det.mailPassword || '',
+            comboString: det.comboString || `${det.username || d.reference}:${det.password || ''}`,
+            price: Number(d.price || 0),
+            purchasedAt: d.$createdAt,
+            userId: d.user_id
+          };
+        });
+    } catch (fallbackErr) {
+      console.warn('Error fetching log orders from Appwrite:', err.message);
+      return [];
+    }
   }
 }
 
@@ -92,7 +206,7 @@ export async function getUserOrders(userId) {
  */
 export async function allocateNumberLine({ userId, service, country = 'us', currentBalance = 10 }) {
   if (currentBalance < service.price) {
-    throw new Error(`Insufficient balance ($${currentBalance.toFixed(2)}). Service cost is $${service.price.toFixed(2)}. Please top up on WhatsApp.`);
+    throw new Error(`Insufficient balance (${siteConfig.formatNaira(currentBalance)}). Service cost is ${siteConfig.formatNaira(service.price)}. Please top up on WhatsApp.`);
   }
 
   // Generate clean US non-VoIP number
@@ -224,7 +338,7 @@ export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalan
  */
 export async function transferFunds({ senderId, recipientEmail, amount, currentBalance }) {
   if (amount <= 0 || currentBalance < amount) {
-    throw new Error(`Insufficient funds. Your balance is $${currentBalance.toFixed(2)}.`);
+    throw new Error(`Insufficient funds. Your balance is ${siteConfig.formatNaira(currentBalance)}.`);
   }
 
   const cleanRecipientEmail = recipientEmail.trim().toLowerCase();

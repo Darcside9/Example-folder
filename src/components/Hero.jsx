@@ -24,7 +24,7 @@ export default function Hero({ onOpenOrderModal }) {
             className="btn btn-primary btn-lg"
             onClick={onOpenOrderModal}
           >
-            <span>Buy Numbers from $0.08</span>
+            <span>Rent Numbers from ₦200</span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="5" y1="12" x2="19" y2="12"/>
               <polyline points="12 5 19 12 12 19"/>
@@ -32,7 +32,7 @@ export default function Hero({ onOpenOrderModal }) {
           </button>
           
           <a href="#logs-marketplace" className="btn btn-secondary btn-lg">
-            <span>🔑 Explore Account Logs</span>
+            <span>Explore Account Logs</span>
           </a>
 
           <a href="#how-it-works" className="btn btn-ghost btn-lg">

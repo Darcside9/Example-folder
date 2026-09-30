@@ -1,6 +1,7 @@
 // ==========================================================================
 // CHRIS SHOPPER — SECURE LOGS SERVICE (APPWRITE CLOUD & SERVERLESS DISPENSER)
-// Zero-trust inventory fetching, sanitized username browsing, and atomic dispense.
+// Zero-trust inventory fetching, sanitized username browsing, atomic dispense,
+// and 30-day credential retention lifecycle.
 // ==========================================================================
 
 import { siteConfig } from '../data/siteConfig';
@@ -8,9 +9,14 @@ import { fetchAvailableAccountLogs } from './appwriteDispenser';
 
 export {
   getPurchasedLogs,
+  fetchUserPurchasedLogs,
   savePurchasedLog,
   fetchAvailableAccountLogs,
   dispenseSpecificAccountLog,
+  bulkDispenseAccountLogs,
+  getLogExpiryInfo,
+  LOG_EXPIRY_DAYS,
+  LOG_EXPIRY_MS,
   adminBulkImportLogs
 } from './appwriteDispenser';
 
@@ -45,7 +51,7 @@ export function markUsernameClaimed(username) {
 }
 
 /**
- * Format credentials as downloadable .txt file content
+ * Format single credentials as downloadable .txt file content
  */
 export function exportCredentialsAsText(cred) {
   const purchasedDate = cred.purchasedAt ? new Date(cred.purchasedAt).toLocaleString() : new Date().toLocaleString();
@@ -86,6 +92,8 @@ Service / Platform : ${cred.platform || 'Account Log'}
 Order ID           : ${cred.id || 'N/A'}
 Purchased Date     : ${purchasedDate}
 Amount             : ₦${Number(cred.price || 1500).toLocaleString('en-NG')}
+Retention Notice   : This account log is stored in your history
+                     for 30 days before being automatically purged.
 
 ----------------- ACCOUNT CREDENTIALS -----------------
 ${credLines.join('\n')}
@@ -121,8 +129,61 @@ export function downloadCredentialsFile(cred) {
 }
 
 /**
- * Appwrite Cloud inventory compatibility adapter
+ * Format multiple purchased credentials as a bundled .txt document
  */
+export function exportBulkCredentialsAsText(credentialsList) {
+  let fileLines = [
+    '=======================================================',
+    'CHRIS SHOPPER — OFFICIAL BULK ACCOUNT LOGS DELIVERY',
+    '=======================================================',
+    `Total Accounts Purchased : ${credentialsList.length}`,
+    `Delivery Timestamp       : ${new Date().toLocaleString()}`,
+    '=======================================================',
+    '30-DAY RETENTION POLICY NOTICE:',
+    'Purchased account logs are securely retained in your',
+    'Chris Shopper Purchase History for 30 days, after which',
+    'they are permanently purged. Save this file for your records.',
+    '=======================================================',
+    ''
+  ];
+
+  credentialsList.forEach((cred, idx) => {
+    fileLines.push(`[ACCOUNT #${idx + 1}: ${cred.platform || 'Account Log'}]`);
+    fileLines.push(`Username / UID     : ${cred.username}`);
+    fileLines.push(`Password           : ${cred.password}`);
+    if (cred.twoFactorKey) fileLines.push(`2FA Secret Key     : ${cred.twoFactorKey}`);
+    if (cred.mail) fileLines.push(`Email Address      : ${cred.mail}`);
+    if (cred.mailPassword) fileLines.push(`Email Password     : ${cred.mailPassword}`);
+    fileLines.push(`One-Line Combo     : ${cred.comboString || `${cred.username}:${cred.password}`}`);
+    fileLines.push('-------------------------------------------------------');
+  });
+
+  fileLines.push(`Need support? Reach us on WhatsApp: ${siteConfig?.whatsappNumber || '+1234567890'}`);
+  return fileLines.join('\n');
+}
+
+/**
+ * Trigger download of all bulk purchased credentials (.txt)
+ */
+export function downloadBulkCredentialsFile(credentialsList) {
+  try {
+    const textContent = exportBulkCredentialsAsText(credentialsList);
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ChrisShopper_Bulk_${credentialsList.length}_Accounts_${Date.now()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    return true;
+  } catch (err) {
+    console.error('Failed to download bulk credentials file:', err);
+    return false;
+  }
+}
+
 export async function fetchLiveLogs() {
   return await fetchAvailableAccountLogs();
 }
@@ -131,4 +192,3 @@ export function getPlatformsCatalog(catalogData) {
   if (Array.isArray(catalogData)) return catalogData;
   return [];
 }
-

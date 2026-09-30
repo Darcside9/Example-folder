@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { faqs } from '../data/faqData';
 
 export default function FaqSection() {
-  const [openIndex, setOpenIndex] = useState(0);
+  const [openIndex, setOpenIndex] = useState(null);
 
   const toggleFaq = (index) => {
-    setOpenIndex(openIndex === index ? -1 : index);
+    setOpenIndex(openIndex === index ? null : index);
   };
 
   return (

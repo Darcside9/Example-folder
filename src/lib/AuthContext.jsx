@@ -5,6 +5,7 @@ import {
   appwriteGetUserProfile,
   getSavedSession 
 } from './appwriteAuth';
+import { ADMIN_CONTACT } from '../data/siteConfig';
 
 const AuthContext = createContext();
 
@@ -80,11 +81,11 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const adminEmail = import.meta.env.VITE_ADMIN_EMAIL || '';
+  const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || ADMIN_CONTACT.adminEmail || '').toLowerCase();
   const isAdmin = Boolean(
     currentUser?.role === 'admin' || 
     currentUser?.is_admin || 
-    (adminEmail && currentUser?.email && currentUser.email.toLowerCase() === adminEmail.toLowerCase())
+    (adminEmail && currentUser?.email && currentUser.email.toLowerCase() === adminEmail)
   );
 
   return (

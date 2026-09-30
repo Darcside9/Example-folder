@@ -4,8 +4,10 @@
 
 .hero-interactive-col {
   width: 100%;
-  max-width: 500px;
+  max-width: 540px;
+  min-width: 0;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
 .hero-panel {
@@ -18,6 +20,7 @@
   gap: 16px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), var(--glow-primary);
   width: 100%;
+  max-width: 100%;
   box-sizing: border-box;
 }
 
@@ -259,13 +262,8 @@
 }
 
 @media (min-width: 768px) {
-  .hero-interactive-col {
-    flex: 0.9;
-    max-width: 100%;
-  }
-
   .hero-panel {
-    padding: 24px;
+    padding: 22px;
     box-shadow: 0 20px 48px rgba(0, 0, 0, 0.6), var(--glow-cyan);
   }
 
@@ -273,5 +271,14 @@
     flex-direction: row;
     align-items: center;
     gap: 12px;
+  }
+}
+
+@media (min-width: 1080px) {
+  .hero-interactive-col {
+    flex: 0.95;
+    max-width: 520px;
+    margin: 0;
+    min-width: 0;
   }
 }

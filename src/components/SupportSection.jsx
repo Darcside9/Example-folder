@@ -36,13 +36,17 @@ export default function SupportSection() {
             </div>
             <h3>WhatsApp Direct Support</h3>
             <p>Chat directly with Chris Shopper for instant assistance with carrier lines, order status, or custom requests.</p>
+            <div style={{ margin: '8px 0 14px 0', fontSize: '0.85rem', color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <div>📱 <strong>WhatsApp:</strong> <span className="font-mono text-cyan">{siteConfig.formattedPhone}</span></div>
+              <div>✉️ <strong>Email:</strong> <span className="font-mono">{siteConfig.adminEmail}</span></div>
+            </div>
             <a 
               href={siteConfig.whatsappUrl} 
               target="_blank" 
-              rel="noreferrer"
+              rel="noreferrer" 
               className="btn btn-primary btn-sm btn-full"
             >
-              <span>Open WhatsApp Chat →</span>
+              <span>Open WhatsApp Chat ({siteConfig.formattedPhone}) →</span>
             </a>
           </div>
 

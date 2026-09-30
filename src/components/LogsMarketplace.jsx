@@ -1,16 +1,23 @@
 // ==========================================================================
 // CHRIS SHOPPER — LOGS MARKETPLACE COMPONENT (ACCSZONE 2-TIER MODEL + BTS MODAL)
+// Live stock count aggregation, multi-select username picker, shopping cart,
+// bulk dispensing with directive modal, and 30-day credential retention.
 // ==========================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   fetchAvailableAccountLogs, 
   dispenseSpecificAccountLog,
-  downloadCredentialsFile
+  bulkDispenseAccountLogs,
+  downloadCredentialsFile,
+  downloadBulkCredentialsFile
 } from '../lib/logsService';
 import { useAuth } from '../lib/AuthContext';
 import { siteConfig } from '../data/siteConfig';
 import BrandIcon from './BrandIcon';
+import LogsCartDrawer from './LogsCartDrawer';
+import '../styles/components/logs-cart.css';
 
 // Helper for rendering authentic brand vector logo on sleek black badge
 function PlatformBrandIcon({ platformId, icon, size = 24, className = '' }) {
@@ -21,8 +28,10 @@ export default function LogsMarketplace({
   onRequireAuth, 
   onShowToast, 
   isDashboard = false,
-  onPurchaseComplete 
+  onPurchaseComplete,
+  onNavigateTab
 }) {
+  const navigate = useNavigate();
   const { currentUser, refreshUser } = useAuth();
   
   const [categories, setCategories] = useState([]);
@@ -30,23 +39,32 @@ export default function LogsMarketplace({
   const [selectedPlatform, setSelectedPlatform] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   
-  // Accordion state: by default, Facebook is open
-  const [expandedCategories, setExpandedCategories] = useState({
-    facebook: true,
-  });
+  // Accordion state: collapsed by default
+  const [expandedCategories, setExpandedCategories] = useState({});
 
-  // Account Log Selection Modal (Step 1: Choose Username from sanitized inventory)
+  // Shopping Cart State (persisted in localStorage)
+  const [cart, setCart] = useState(() => {
+    try {
+      const raw = localStorage.getItem('cs_logs_cart');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [isCartOpen, setIsCartOpen] = useState(false);
+
+  // Account Log Selection Modal (Step 1: Choose Usernames with Multi-Select)
   const [accountSelectModal, setAccountSelectModal] = useState({
     isOpen: false,
     category: null,
     subType: null,
-    selectedUsername: null,
+    selectedUsernames: [],
     searchFilter: '',
     loading: false,
     error: null,
   });
 
-  // Credentials Delivery Modal (Step 2: Revealed ONLY after verified payment)
+  // Single Credentials Delivery Modal (Step 2 for single item buy)
   const [deliveryModal, setDeliveryModal] = useState({
     isOpen: false,
     credential: null,
@@ -54,6 +72,43 @@ export default function LogsMarketplace({
     showMailPassword: false,
     copiedField: null,
   });
+
+  // Bulk Purchase Directive Modal (Step 2 for bulk orders)
+  const [bulkDirectiveModal, setBulkDirectiveModal] = useState({
+    isOpen: false,
+    credentials: [],
+    totalCost: 0,
+  });
+
+  const saveCart = (newCart) => {
+    setCart(newCart);
+    try {
+      localStorage.setItem('cs_logs_cart', JSON.stringify(newCart));
+    } catch {}
+  };
+
+  const handleAddToCart = (itemsToAdd) => {
+    const existingIds = new Set(cart.map(i => `${i.platformId}_${i.username}`));
+    const freshItems = itemsToAdd.filter(i => !existingIds.has(`${i.platformId}_${i.username}`));
+
+    if (freshItems.length === 0) {
+      toast('Selected account(s) are already in your cart.');
+      return;
+    }
+
+    const updated = [...cart, ...freshItems];
+    saveCart(updated);
+    toast(`🛒 Added ${freshItems.length} account${freshItems.length > 1 ? 's' : ''} to cart!`);
+  };
+
+  const handleRemoveFromCart = (itemIdOrUsername) => {
+    const updated = cart.filter(i => i.id !== itemIdOrUsername && i.username !== itemIdOrUsername);
+    saveCart(updated);
+  };
+
+  const handleClearCart = () => {
+    saveCart([]);
+  };
 
   // Fetch sanitized inventory catalog from Appwrite Cloud & Dispenser
   const loadInventory = async () => {
@@ -112,24 +167,44 @@ export default function LogsMarketplace({
       return;
     }
 
-    const availableAccounts = (subType.accounts || []).filter(a => a.isAvailable);
-    const firstAccount = availableAccounts[0] || null;
+    const availableAccounts = (subType.accounts || []).filter(a => a.isAvailable !== false);
+    const initialSelection = availableAccounts.length > 0 ? [availableAccounts[0].username] : [];
 
     setAccountSelectModal({
       isOpen: true,
       category,
       subType,
-      selectedUsername: firstAccount?.username || null,
-      selectedAccount: firstAccount,
+      selectedUsernames: initialSelection,
       searchFilter: '',
       loading: false,
       error: null,
     });
   };
 
-  // Confirm Purchase of the Selected Username
+  const toggleSelectUsername = (username) => {
+    setAccountSelectModal(prev => {
+      const exists = prev.selectedUsernames.includes(username);
+      const updated = exists 
+        ? prev.selectedUsernames.filter(u => u !== username)
+        : [...prev.selectedUsernames, username];
+      return { ...prev, selectedUsernames: updated };
+    });
+  };
+
+  const toggleSelectAll = (availableUsernames) => {
+    setAccountSelectModal(prev => {
+      const isAllSelected = availableUsernames.length > 0 && availableUsernames.every(u => prev.selectedUsernames.includes(u));
+      return {
+        ...prev,
+        selectedUsernames: isAllSelected ? [] : [...availableUsernames]
+      };
+    });
+  };
+
+  // Confirm Purchase of the Selected Username(s) directly
   const handleConfirmAccountPurchase = async () => {
-    if (!accountSelectModal.selectedUsername || !currentUser) return;
+    const selectedCount = accountSelectModal.selectedUsernames.length;
+    if (selectedCount === 0 || !currentUser) return;
 
     setAccountSelectModal(prev => ({ ...prev, loading: true, error: null }));
 
@@ -137,55 +212,86 @@ export default function LogsMarketplace({
       const balance = Number(currentUser.balance || 0);
       const targetCategory = accountSelectModal.category;
       const targetSubType = accountSelectModal.subType;
-      const dynamicPrice = Number(
-        accountSelectModal.selectedAccount?.price !== undefined 
-          ? accountSelectModal.selectedAccount.price 
-          : (targetSubType?.price !== undefined ? targetSubType.price : (targetCategory?.demoPrice || 1.50))
-      );
 
-      const result = await dispenseSpecificAccountLog({
-        username: accountSelectModal.selectedUsername,
-        platformId: targetCategory.id,
-        subTypeId: targetSubType.id,
-        userId: currentUser.id,
-        userEmail: currentUser.email,
-        currentBalance: balance,
-        price: dynamicPrice,
-      });
+      if (selectedCount === 1) {
+        // Single Account Purchase Flow
+        const targetUsername = accountSelectModal.selectedUsernames[0];
+        const targetAccount = (targetSubType.accounts || []).find(a => a.username === targetUsername);
+        const dynamicPrice = Number(
+          targetAccount?.price !== undefined 
+            ? targetAccount.price 
+            : (targetSubType?.price !== undefined ? targetSubType.price : (targetCategory?.demoPrice || 1500))
+        );
 
-      // Refresh balance in auth context
-      if (refreshUser) {
-        await refreshUser();
+        const result = await dispenseSpecificAccountLog({
+          username: targetUsername,
+          platformId: targetCategory.id,
+          subTypeId: targetSubType.id,
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          currentBalance: balance,
+          price: dynamicPrice,
+        });
+
+        if (refreshUser) await refreshUser();
+
+        setAccountSelectModal(prev => ({ ...prev, isOpen: false, loading: false }));
+
+        setDeliveryModal({
+          isOpen: true,
+          credential: result.credential,
+          showPassword: false,
+          showMailPassword: false,
+          copiedField: null,
+        });
+
+        toast(`🎉 Successfully purchased ${result.credential.platform} Account (@${result.credential.username})!`);
+
+        if (onPurchaseComplete) {
+          onPurchaseComplete(result.credential);
+        }
+
+        await loadInventory();
+      } else {
+        // Multi-Account Bulk Purchase Flow
+        const itemsToBuy = accountSelectModal.selectedUsernames.map(username => {
+          const acc = (targetSubType.accounts || []).find(a => a.username === username);
+          return {
+            username,
+            platformId: targetCategory.id,
+            platform: targetCategory.name,
+            subTypeId: targetSubType.id,
+            title: targetSubType.title,
+            price: acc?.price !== undefined ? acc.price : (targetSubType?.price || targetCategory?.demoPrice || 1500),
+            icon: targetCategory.icon || targetCategory.id
+          };
+        });
+
+        const result = await bulkDispenseAccountLogs({
+          items: itemsToBuy,
+          userId: currentUser.id,
+          userEmail: currentUser.email,
+          currentBalance: balance
+        });
+
+        if (refreshUser) await refreshUser();
+
+        setAccountSelectModal(prev => ({ ...prev, isOpen: false, loading: false }));
+
+        setBulkDirectiveModal({
+          isOpen: true,
+          credentials: result.credentials,
+          totalCost: result.totalCost
+        });
+
+        toast(`🎉 Bulk purchase successful! ${result.credentials.length} accounts dispensed.`);
+
+        if (onPurchaseComplete) {
+          onPurchaseComplete(result.credentials);
+        }
+
+        await loadInventory();
       }
-
-      // Close selection modal
-      setAccountSelectModal({
-        isOpen: false,
-        category: null,
-        subType: null,
-        selectedUsername: null,
-        searchFilter: '',
-        loading: false,
-        error: null,
-      });
-
-      // Open credentials delivery modal with full credentials
-      setDeliveryModal({
-        isOpen: true,
-        credential: result.credential,
-        showPassword: false,
-        showMailPassword: false,
-        copiedField: null,
-      });
-
-      toast(`🎉 Successfully purchased ${result.credential.platform} Account (@${result.credential.username})!`);
-
-      if (onPurchaseComplete) {
-        onPurchaseComplete(result.credential);
-      }
-
-      // Reload live inventory to reflect newly sold item
-      await loadInventory();
     } catch (err) {
       console.error('Purchase error:', err);
       setAccountSelectModal(prev => ({
@@ -194,6 +300,32 @@ export default function LogsMarketplace({
         error: err.message || 'Purchase failed.'
       }));
     }
+  };
+
+  // Add all selected usernames to cart
+  const handleAddSelectedToCart = () => {
+    const selectedCount = accountSelectModal.selectedUsernames.length;
+    if (selectedCount === 0) return;
+
+    const targetCategory = accountSelectModal.category;
+    const targetSubType = accountSelectModal.subType;
+
+    const items = accountSelectModal.selectedUsernames.map(username => {
+      const acc = (targetSubType.accounts || []).find(a => a.username === username);
+      return {
+        id: `${targetCategory.id}_${username}`,
+        username,
+        platformId: targetCategory.id,
+        platform: targetCategory.name,
+        subTypeId: targetSubType.id,
+        title: targetSubType.title,
+        price: acc?.price !== undefined ? acc.price : (targetSubType?.price || targetCategory?.demoPrice || 1500),
+        icon: targetCategory.icon || targetCategory.id
+      };
+    });
+
+    handleAddToCart(items);
+    setAccountSelectModal(prev => ({ ...prev, isOpen: false }));
   };
 
   // Filtered categories
@@ -237,6 +369,14 @@ export default function LogsMarketplace({
     return accounts.filter(acc => acc.username.toLowerCase().includes(filter));
   }, [accountSelectModal.subType, accountSelectModal.searchFilter]);
 
+  const modalAvailableUsernames = useMemo(() => {
+    return modalAvailableAccounts.filter(a => a.isAvailable !== false).map(a => a.username);
+  }, [modalAvailableAccounts]);
+
+  const cartTotal = useMemo(() => {
+    return cart.reduce((sum, item) => sum + Number(item.price || 0), 0);
+  }, [cart]);
+
   return (
     <section className={`logs-marketplace-section ${isDashboard ? 'in-dashboard' : 'reveal-on-scroll'}`} id="logs-marketplace">
       {/* Header Area */}
@@ -250,7 +390,7 @@ export default function LogsMarketplace({
             Social &amp; Platform <span className="text-gradient">Account Logs</span>
           </h2>
           <p className="logs-header-desc">
-            Aged profiles with 2FA authenticator secrets and full email access. Select an account category to choose your preferred username prior to checkout.
+            Aged profiles with 2FA authenticator secrets and full email access. Select an account category to choose your preferred username prior to checkout, or purchase in bulk via our shopping cart.
           </p>
         </div>
       )}
@@ -313,7 +453,7 @@ export default function LogsMarketplace({
            AUTHENTICATED MEMBERS CATALOG VIEW
            ========================================================================= */
         <>
-          {/* Filter and Search Controls */}
+          {/* Filter and Search Controls Bar */}
           <div className="logs-controls-bar">
             <div className="logs-platform-pills">
               <button
@@ -338,18 +478,39 @@ export default function LogsMarketplace({
               ))}
             </div>
 
-            <div className="logs-search-wrapper">
-              <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="M21 21l-4.35-4.35"/>
-              </svg>
-              <input
-                type="text"
-                className="logs-search-input"
-                placeholder="Search account specs, 2FA, years..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 auto', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <div className="logs-search-wrapper" style={{ flex: '1 1 240px', maxWidth: '380px' }}>
+                <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.35-4.35"/>
+                </svg>
+                <input
+                  type="text"
+                  className="logs-search-input"
+                  placeholder="Search specs, 2FA, country..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              {/* Shopping Cart Button */}
+              <button
+                type="button"
+                className={`logs-cart-toggle-btn ${cart.length > 0 ? 'has-items' : ''}`}
+                onClick={() => setIsCartOpen(true)}
+                title="View Bulk Purchase Shopping Cart"
+              >
+                <span style={{ fontSize: '1.05rem' }}>🛒</span>
+                <span>Cart</span>
+                {cart.length > 0 && (
+                  <>
+                    <span className="cart-count-badge">{cart.length}</span>
+                    <span className="cart-subtotal-text">
+                      {siteConfig.formatNaira(cartTotal)}
+                    </span>
+                  </>
+                )}
+              </button>
             </div>
           </div>
 
@@ -357,7 +518,7 @@ export default function LogsMarketplace({
           <div className="accszone-container">
             {loading && categories.length === 0 ? (
               <div className="accszone-loading">
-                <span className="waiting-dot-pulse mr-2" /> Syncing verified inventory from Appwrite Cloud...
+                <span className="waiting-dot-pulse mr-2" /> Syncing live verified inventory...
               </div>
             ) : filteredCatalog.length === 0 ? (
               <div className="accszone-empty-search">
@@ -368,6 +529,11 @@ export default function LogsMarketplace({
                 const isExpanded = !!expandedCategories[cat.id];
                 const hasItems = Array.isArray(cat.items) && cat.items.length > 0;
                 const headerTitle = cat.subtitle ? `${cat.name} - ${cat.subtitle}` : cat.name;
+
+                // Total available stock aggregated across all types
+                const totalStock = cat.totalStock !== undefined 
+                  ? cat.totalStock 
+                  : (cat.items || []).reduce((acc, it) => acc + (it.stockCount || (it.accounts || []).filter(a => a.isAvailable !== false).length || 0), 0);
 
                 return (
                   <div key={cat.id} className="accszone-category-block">
@@ -388,8 +554,12 @@ export default function LogsMarketplace({
                       </div>
 
                       <div className="accszone-cat-meta">
-                        <span className="accszone-cat-badge">
-                          {hasItems ? `${cat.items.length} Configurations` : 'Catalog Synced'}
+                        {/* Main Category Stock Badge: e.g. 9 Available · 3 Configs */}
+                        <span className={`accszone-cat-badge ${totalStock > 0 ? 'has-stock' : 'no-stock'}`}>
+                          {totalStock > 0 
+                            ? `${totalStock} Available · ${cat.items?.length || 0} Configurations` 
+                            : (hasItems ? `0 Available · ${cat.items?.length || 0} Configurations` : 'Catalog Synced')
+                          }
                         </span>
                         <span className={`accszone-chevron ${isExpanded ? 'open' : ''}`}>
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -426,46 +596,59 @@ export default function LogsMarketplace({
                                 );
                               }
 
-                              return displayItems.map((item, idx) => (
-                                <div 
-                                  key={item.id || idx} 
-                                  className="accszone-item-row is-clickable"
-                                  onClick={() => handleOpenAccountSelect(cat, item)}
-                                  role="button"
-                                  tabIndex={0}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter' || e.key === ' ') {
-                                      e.preventDefault();
-                                      handleOpenAccountSelect(cat, item);
-                                    }
-                                  }}
-                                  title={`Click to view available ${cat.name} usernames`}
-                                >
-                                  {/* Top / Left Section: Icon & Full Description */}
-                                  <div className="accszone-item-main">
-                                    <BrandIcon iconKey={cat.icon || cat.id} name={cat.name} size={28} />
+                              return displayItems.map((item, idx) => {
+                                const itemStock = item.stockCount !== undefined 
+                                  ? item.stockCount 
+                                  : (item.accounts || []).filter(a => a.isAvailable !== false).length;
+                                const isSoldOut = itemStock === 0;
 
-                                    <div className="accszone-item-content">
-                                      <span className="accszone-item-title">
-                                        {item.title}
+                                return (
+                                  <div 
+                                    key={item.id || idx} 
+                                    className={`accszone-item-row is-clickable ${isSoldOut ? 'is-sold-out' : ''}`}
+                                    onClick={() => handleOpenAccountSelect(cat, item)}
+                                    role="button"
+                                    tabIndex={0}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        handleOpenAccountSelect(cat, item);
+                                      }
+                                    }}
+                                    title={isSoldOut ? `${cat.name} configuration is currently sold out` : `Click to view and select available ${cat.name} usernames`}
+                                  >
+                                    {/* Top / Left Section: Icon & Full Description */}
+                                    <div className="accszone-item-main">
+                                      <BrandIcon iconKey={cat.icon || cat.id} name={cat.name} size={28} />
+
+                                      <div className="accszone-item-content">
+                                        <span className="accszone-item-title">
+                                          {item.title}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {/* Bottom / Right Section: Stock Box, Price Tag & CTA Button */}
+                                    <div className="accszone-item-status-col">
+                                      {/* Small UI stock box per type (e.g. 2 in stock / Sold Out) */}
+                                      <span className={`accszone-stock-box ${isSoldOut ? 'sold-out' : 'in-stock'}`}>
+                                        <span className="stock-dot" />
+                                        {isSoldOut ? 'Sold Out' : `${itemStock} in stock`}
+                                      </span>
+
+                                      <span className="accszone-price-tag font-mono">
+                                        {siteConfig.formatNaira(item.price !== undefined ? item.price : (cat.demoPrice || 1500))}
+                                      </span>
+                                      <span className="accszone-item-tag">
+                                        ✓ 2FA + Mail Access
+                                      </span>
+                                      <span className={`accszone-choose-btn ${isSoldOut ? 'disabled' : ''}`}>
+                                        {isSoldOut ? 'Sold Out' : 'Choose Username →'}
                                       </span>
                                     </div>
                                   </div>
-
-                                  {/* Bottom / Right Section: Status Tag & CTA Button */}
-                                  <div className="accszone-item-status-col">
-                                    <span className="accszone-price-tag font-mono">
-                                      {siteConfig.formatNaira(item.price !== undefined ? item.price : (cat.demoPrice || 1500))}
-                                    </span>
-                                    <span className="accszone-item-tag">
-                                      ✓ 2FA + Mail Access
-                                    </span>
-                                    <span className="accszone-choose-btn">
-                                      Choose Username →
-                                    </span>
-                                  </div>
-                                </div>
-                              ));
+                                );
+                              });
                             })()
                           ) : (
                             <div className="accszone-empty-items">
@@ -485,7 +668,7 @@ export default function LogsMarketplace({
       )}
 
       {/* =========================================================================
-          STEP 1: ACCOUNT LOG SELECTION MODAL (SANITIZED USERNAME PREVIEW)
+          STEP 1: ACCOUNT LOG SELECTION MODAL (MULTI-SELECT USERNAME PREVIEW & BULK CART)
           ========================================================================= */}
       {accountSelectModal.isOpen && accountSelectModal.subType && (
         <div 
@@ -496,14 +679,13 @@ export default function LogsMarketplace({
             {/* Modal Header */}
             <div className="account-select-header">
               <div className="account-select-header-info">
-                <div 
-                  className="account-select-badge"
-                  style={{ backgroundColor: accountSelectModal.category?.color || '#1877f2' }}
-                >
-                  <PlatformBrandIcon platformId={accountSelectModal.category?.id} size={22} className="text-white" />
-                </div>
+                <BrandIcon 
+                  iconKey={accountSelectModal.category?.icon || accountSelectModal.category?.id} 
+                  name={accountSelectModal.category?.name || accountSelectModal.category?.id} 
+                  size={44} 
+                />
                 <div>
-                  <h3 className="account-select-title">Choose Account Username</h3>
+                  <h3 className="account-select-title">Choose Account Usernames</h3>
                   <p className="account-select-subtitle">
                     {accountSelectModal.subType.title}
                   </p>
@@ -529,7 +711,7 @@ export default function LogsMarketplace({
               </span>
             </div>
 
-            {/* In-Modal Username Filter */}
+            {/* In-Modal Username Filter & Multi-Select Toolbar */}
             <div className="account-select-search-wrap">
               <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <circle cx="11" cy="11" r="8"/>
@@ -544,6 +726,25 @@ export default function LogsMarketplace({
               />
             </div>
 
+            {/* Multi-Select Toolbar */}
+            {modalAvailableUsernames.length > 0 && (
+              <div className="modal-selection-toolbar">
+                <span>
+                  {accountSelectModal.selectedUsernames.length} of {modalAvailableUsernames.length} available selected
+                </span>
+                <button
+                  type="button"
+                  className="btn-select-all"
+                  onClick={() => toggleSelectAll(modalAvailableUsernames)}
+                >
+                  {modalAvailableUsernames.every(u => accountSelectModal.selectedUsernames.includes(u)) 
+                    ? 'Deselect All' 
+                    : 'Select All Available'
+                  }
+                </button>
+              </div>
+            )}
+
             {/* Username Selection List */}
             <div className="account-select-list">
               {modalAvailableAccounts.length === 0 ? (
@@ -552,29 +753,26 @@ export default function LogsMarketplace({
                 </div>
               ) : (
                 modalAvailableAccounts.map((acc, aIdx) => {
-                  const isSelected = accountSelectModal.selectedUsername === acc.username;
-                  const isAvailable = acc.isAvailable;
+                  const isSelected = accountSelectModal.selectedUsernames.includes(acc.username);
+                  const isAvailable = acc.isAvailable !== false;
 
                   return (
                     <div
                       key={acc.id || acc.username || aIdx}
                       className={`account-select-item ${isSelected ? 'selected' : ''} ${!isAvailable ? 'disabled' : ''}`}
-                      onClick={() => isAvailable && setAccountSelectModal(prev => ({ 
-                        ...prev, 
-                        selectedUsername: acc.username,
-                        selectedAccount: acc
-                      }))}
+                      onClick={() => isAvailable && toggleSelectUsername(acc.username)}
                     >
                       <div className="acc-item-left">
-                        <div className={`acc-radio-circle ${isSelected ? 'checked' : ''}`}>
-                          {isSelected && <span className="acc-radio-dot" />}
+                        {/* Multi-select checkbox */}
+                        <div className={`acc-checkbox-square ${isSelected ? 'checked' : ''}`}>
+                          {isSelected ? '✓' : ''}
                         </div>
                         <div className="acc-avatar-circle">
                           👤
                         </div>
                         <div className="acc-info-col">
                           <span className="acc-username-text">@{acc.username}</span>
-                          <span className="acc-platform-sub">{acc.platform} PVA Account Log</span>
+                          <span className="acc-platform-sub">{acc.platform || accountSelectModal.category?.name} PVA Account Log</span>
                         </div>
                       </div>
 
@@ -591,75 +789,94 @@ export default function LogsMarketplace({
             </div>
 
             {accountSelectModal.error && (
-              <div className="p-3 bg-red-900/30 border border-red-500/40 rounded-lg text-red-300 text-sm mb-4">
+              <div className="p-3 bg-red-900/30 border border-red-500/40 rounded-lg text-red-300 text-sm mb-4" style={{ margin: '0 20px 10px' }}>
                 ⚠️ {accountSelectModal.error}
               </div>
             )}
 
-            {/* Modal Footer / Checkout Bar */}
+            {/* Modal Footer / Bulk Actions Bar */}
             {(() => {
-              const activePrice = Number(
-                accountSelectModal.selectedAccount?.price !== undefined
-                  ? accountSelectModal.selectedAccount.price
-                  : (accountSelectModal.subType?.price !== undefined 
-                      ? accountSelectModal.subType.price 
-                      : (accountSelectModal.category?.demoPrice || 1500))
+              const selectedCount = accountSelectModal.selectedUsernames.length;
+              const unitPrice = Number(
+                accountSelectModal.subType?.price !== undefined 
+                  ? accountSelectModal.subType.price 
+                  : (accountSelectModal.category?.demoPrice || 1500)
               );
+              const totalSelectedCost = selectedCount * unitPrice;
               const userBalance = Number(currentUser?.balance || 0);
-              const remainingBalance = Number((userBalance - activePrice).toFixed(2));
-              const hasSufficientBalance = userBalance >= activePrice;
+              const remainingBalance = Number((userBalance - totalSelectedCost).toFixed(2));
+              const hasSufficientBalance = userBalance >= totalSelectedCost;
 
               return (
                 <div className="account-select-footer">
                   <div className="account-select-footer-meta">
                     <div className="footer-selected-line">
-                      <span className="meta-label">Selected Account:</span>
+                      <span className="meta-label">Selected:</span>
                       <strong className="text-white">
-                        {accountSelectModal.selectedUsername ? `@${accountSelectModal.selectedUsername}` : 'None selected'}
+                        {selectedCount === 0 
+                          ? 'None selected' 
+                          : `${selectedCount} account${selectedCount > 1 ? 's' : ''}`
+                        }
                       </strong>
                     </div>
                     <div className="footer-price-line">
-                      <span className="meta-label">Account Price:</span>
-                      <span className="font-mono text-green font-bold">{siteConfig.formatNaira(activePrice)}</span>
+                      <span className="meta-label">Total Cost:</span>
+                      <span className="font-mono text-green font-bold">
+                        {siteConfig.formatNaira(totalSelectedCost)}
+                      </span>
                     </div>
                     <div className="footer-balance-line">
-                      <span className="meta-label">Your Wallet Balance:</span>
+                      <span className="meta-label">Wallet Balance:</span>
                       <span className="font-mono text-cyan">{siteConfig.formatNaira(userBalance)}</span>
                     </div>
                     <div className="footer-remaining-line">
-                      <span className="meta-label">Remaining After Purchase:</span>
+                      <span className="meta-label">Remaining Balance:</span>
                       <span className={`font-mono font-bold ${hasSufficientBalance ? 'text-green' : 'text-danger'}`}>
                         {siteConfig.formatNaira(remainingBalance)}
                       </span>
                     </div>
                   </div>
 
-                  {!hasSufficientBalance ? (
-                    <a 
-                      href={siteConfig.getWhatsAppTopUpUrl(2000, currentUser?.email)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-action-primary"
-                    >
-                      💬 Top Up via WhatsApp (₦2,000)
-                    </a>
-                  ) : (
+                  <div className="account-select-footer-actions">
+                    {/* Action 1: Add Selected to Cart */}
                     <button
                       type="button"
-                      className="btn-action-primary"
-                      disabled={accountSelectModal.loading || !accountSelectModal.selectedUsername}
-                      onClick={handleConfirmAccountPurchase}
+                      className="btn-action-cart"
+                      disabled={accountSelectModal.loading || selectedCount === 0}
+                      onClick={handleAddSelectedToCart}
+                      title="Add selected accounts to shopping cart"
                     >
-                      {accountSelectModal.loading ? (
-                        <>
-                          <span className="waiting-dot-pulse mr-2" />
-                          Dispensing &amp; Verifying Credentials...
-                        </>
-                      ) : (
-                        `Confirm & Buy Log (${siteConfig.formatNaira(activePrice)}) 🔑`
-                      )}
+                      <span>🛒 Add to Cart ({selectedCount})</span>
                     </button>
-                  )}
+
+                    {/* Action 2: Buy Selected Now */}
+                    {!hasSufficientBalance && selectedCount > 0 ? (
+                      <a 
+                        href={siteConfig.getWhatsAppTopUpUrl(Math.max(2000, Math.ceil(totalSelectedCost - userBalance)), currentUser?.email)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn-action-primary"
+                      >
+                        💬 Top Up ({siteConfig.formatNaira(Math.max(2000, Math.ceil(totalSelectedCost - userBalance)))})
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-action-primary"
+                        disabled={accountSelectModal.loading || selectedCount === 0}
+                        onClick={handleConfirmAccountPurchase}
+                      >
+                        {accountSelectModal.loading ? (
+                          <>
+                            <span className="waiting-dot-pulse mr-2" />
+                            Dispensing...
+                          </>
+                        ) : (
+                          `Buy ${selectedCount > 1 ? `${selectedCount} Now` : 'Now'} (${siteConfig.formatNaira(totalSelectedCost)}) 🔑`
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })()}
@@ -668,7 +885,7 @@ export default function LogsMarketplace({
       )}
 
       {/* =========================================================================
-          STEP 2: CREDENTIALS DELIVERY MODAL (FULL SENSITIVE DATA REVEALED)
+          STEP 2A: SINGLE CREDENTIALS DELIVERY MODAL (SINGLE ITEM PURCHASE)
           ========================================================================= */}
       {deliveryModal.isOpen && deliveryModal.credential && (
         <div className="logs-modal-overlay">
@@ -687,6 +904,14 @@ export default function LogsMarketplace({
               >
                 ✕
               </button>
+            </div>
+
+            {/* 30-Day Expiry Notice */}
+            <div className="single-expiry-notice-bar">
+              <span>⏰</span>
+              <span>
+                <strong>30-Day Expiry Notice:</strong> This account log will be automatically purged from your Chris Shopper history after 30 days. Be sure to copy or download your credentials now.
+              </span>
             </div>
 
             <div className="credentials-display-card">
@@ -816,6 +1041,128 @@ export default function LogsMarketplace({
           </div>
         </div>
       )}
+
+      {/* =========================================================================
+          STEP 2B: BULK PURCHASE DIRECTIVE MODAL (BULK CHECKOUT SUCCESS)
+          ========================================================================= */}
+      {bulkDirectiveModal.isOpen && (
+        <div className="logs-modal-overlay">
+          <div className="bulk-directive-modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="bulk-directive-header">
+              <div>
+                <h3 className="bulk-directive-title">🎉 Bulk Order Complete!</h3>
+                <p className="bulk-directive-subtitle">
+                  Successfully dispensed {bulkDirectiveModal.credentials.length} account logs ({siteConfig.formatNaira(bulkDirectiveModal.totalCost)}).
+                </p>
+              </div>
+              <button 
+                type="button" 
+                className="logs-modal-close-btn"
+                onClick={() => setBulkDirectiveModal({ isOpen: false, credentials: [], totalCost: 0 })}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bulk-directive-content">
+              {/* 30-Day Expiry Alert */}
+              <div className="bulk-expiry-alert-box">
+                <span className="expiry-alert-icon">⏰</span>
+                <div className="expiry-alert-text">
+                  <strong>30-Day Auto-Purge Notice:</strong> All purchased account logs will be automatically removed from your Chris Shopper history after 30 days for customer privacy. Be sure to back up or download your credentials before then!
+                </div>
+              </div>
+
+              {/* Directive Information Box */}
+              <div className="bulk-directive-info-box">
+                <span className="directive-info-icon">📁</span>
+                <div className="directive-info-text">
+                  <strong>Individual Credentials Ready in Purchase History:</strong>
+                  <p>
+                    Because you purchased multiple accounts across different platforms with distinct login protocols (Outlook Webmail, 2FA dynamic tokens, proxy rules), each account log has been individually organized in your <strong>Purchase History</strong> where you can copy passwords, generate 2FA tokens, and download .txt files.
+                  </p>
+                </div>
+              </div>
+
+              {/* Summary of Dispensed Accounts */}
+              <div>
+                <div style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: '700', textTransform: 'uppercase', marginBottom: '8px' }}>
+                  Dispensed Accounts ({bulkDirectiveModal.credentials.length}):
+                </div>
+                <div className="bulk-purchased-list">
+                  {bulkDirectiveModal.credentials.map((cred, idx) => (
+                    <div key={cred.id || idx} className="bulk-purchased-item">
+                      <div>
+                        <span className="bulk-item-user">@{cred.username}</span>
+                        <span style={{ fontSize: '0.74rem', color: '#94a3b8', marginLeft: '8px' }}>
+                          {cred.platform}
+                        </span>
+                      </div>
+                      <span className="font-mono text-green" style={{ fontSize: '0.82rem' }}>
+                        {siteConfig.formatNaira(cred.price)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="bulk-directive-footer">
+              <button
+                type="button"
+                className="btn-action-primary"
+                onClick={() => {
+                  setBulkDirectiveModal({ isOpen: false, credentials: [], totalCost: 0 });
+                  if (onNavigateTab) {
+                    onNavigateTab('history', 'logs');
+                  } else if (isDashboard) {
+                    // Fallback
+                    window.location.hash = '#history';
+                  } else {
+                    navigate('/dashboard');
+                  }
+                }}
+              >
+                <span>📂 Proceed to Purchase History →</span>
+              </button>
+
+              <button
+                type="button"
+                className="btn-action-secondary"
+                onClick={() => downloadBulkCredentialsFile(bulkDirectiveModal.credentials)}
+              >
+                <span>⬇️ Download All Credentials (.txt Bundle)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          SHOPPING CART DRAWER
+          ========================================================================= */}
+      <LogsCartDrawer
+        isOpen={isCartOpen}
+        onClose={() => setIsCartOpen(false)}
+        cart={cart}
+        onRemoveItem={handleRemoveFromCart}
+        onClearCart={handleClearCart}
+        currentUser={currentUser}
+        onRequireAuth={onRequireAuth}
+        onShowToast={toast}
+        onBulkPurchaseSuccess={(result) => {
+          setBulkDirectiveModal({
+            isOpen: true,
+            credentials: result.credentials,
+            totalCost: result.totalCost
+          });
+          loadInventory();
+          if (refreshUser) refreshUser();
+          if (onPurchaseComplete) onPurchaseComplete(result.credentials);
+        }}
+      />
     </section>
   );
 }

@@ -29,6 +29,20 @@
   gap: 16px;
 }
 
+.admin-brand-logo {
+  width: 50px;
+  height: 50px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.45));
+}
+
+@media (max-width: 768px) {
+  .admin-brand-logo {
+    display: none !important;
+  }
+}
+
 .dash-avatar-circle.admin-avatar {
   width: 48px;
   height: 48px;

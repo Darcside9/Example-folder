@@ -741,10 +741,11 @@ export default function AdminDashboard({ onShowToast }) {
       {/* Top Header */}
       <div className="dashboard-header-container">
         <div className="dashboard-user-greeting">
-          <div className="dash-avatar-circle admin-avatar">👑</div>
+          <img src="/bag_logo.svg" alt="Chris Shopper" className="brand-logo-img admin-brand-logo" />
           <div>
             <div className="dash-title-row">
               <h2>Admin Master Control Panel</h2>
+              <span className="brand-gateway-badge">GATEWAY</span>
               <span className="admin-badge-pill">Appwrite Cloud Zero-Trust</span>
             </div>
             <p className="dash-email-sub">Appwrite Cloud Database Management &amp; Account Logs Dispenser Controller</p>
