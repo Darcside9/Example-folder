@@ -68,7 +68,8 @@ export default function AdminDashboard({ onShowToast }) {
     tag: '',
     icon: 'generic_globe',
     color: '#38bdf8',
-    demoPrice: '1500'
+    demoPrice: '1500',
+    has2fa: false
   });
 
   const [showEditPlatformModal, setShowEditPlatformModal] = useState(false);
@@ -80,7 +81,8 @@ export default function AdminDashboard({ onShowToast }) {
     tag: '',
     icon: 'generic_globe',
     color: '#38bdf8',
-    demoPrice: '1500'
+    demoPrice: '1500',
+    has2fa: false
   });
 
   const [showAddPackageModal, setShowAddPackageModal] = useState(false);
@@ -89,7 +91,8 @@ export default function AdminDashboard({ onShowToast }) {
   const [newPackageForm, setNewPackageForm] = useState({
     title: '',
     price: '1500',
-    description: ''
+    description: '',
+    has2fa: false
   });
 
   const [showEditPackageModal, setShowEditPackageModal] = useState(false);
@@ -100,7 +103,8 @@ export default function AdminDashboard({ onShowToast }) {
     packageId: '',
     title: '',
     price: '1500',
-    description: ''
+    description: '',
+    has2fa: false
   });
 
   // -------------------------------------------------------------------------
@@ -111,6 +115,7 @@ export default function AdminDashboard({ onShowToast }) {
   const [customSubTypeTitle, setCustomSubTypeTitle] = useState('');
   const [logPrice, setLogPrice] = useState('1500');
   const [rawLogsInput, setRawLogsInput] = useState('');
+  const [logRulesNotes, setLogRulesNotes] = useState('');
   const [parsedRows, setParsedRows] = useState([]);
   const [hasParsed, setHasParsed] = useState(false);
   const [maskPasswords, setMaskPasswords] = useState(true);
@@ -130,6 +135,23 @@ export default function AdminDashboard({ onShowToast }) {
   const activePlatformSchema = useMemo(() => {
     return getPlatformDelimiterConfig(activePlatformConfig);
   }, [activePlatformConfig]);
+
+  // Synchronize selectedSubTypeId whenever activePlatformConfig changes to ensure it's always valid
+  useEffect(() => {
+    if (activePlatformConfig) {
+      const items = activePlatformConfig.items || [];
+      const isValid = items.some(i => i.id === selectedSubTypeId) || selectedSubTypeId === 'custom';
+      if (!isValid) {
+        if (items.length > 0) {
+          setSelectedSubTypeId(items[0].id);
+          setLogPrice(Number(items[0].price || activePlatformConfig.demoPrice || 1500).toFixed(0));
+        } else {
+          setSelectedSubTypeId('custom');
+          setLogPrice(Number(activePlatformConfig.demoPrice || 1500).toFixed(0));
+        }
+      }
+    }
+  }, [activePlatformConfig, selectedSubTypeId]);
 
   // -------------------------------------------------------------------------
   // DELIMITER & SCHEMA CONFIG STATES & ACTIONS
@@ -360,6 +382,7 @@ export default function AdminDashboard({ onShowToast }) {
   // Clear Ingestion Zone
   const handleClearIngestion = () => {
     setRawLogsInput('');
+    setLogRulesNotes('');
     setParsedRows([]);
     setHasParsed(false);
     setSyncProgress(null);
@@ -388,14 +411,32 @@ export default function AdminDashboard({ onShowToast }) {
     setSyncProgress({ current: 0, total: validRecords.length, percentage: 0, successCount: 0, failedCount: 0 });
 
     try {
-      // Find package title
+      // Determine package title and ensure a valid package ID in the catalog
+      let finalSubTypeId = selectedSubTypeId;
       let subTypeTitle = '';
+
       if (selectedSubTypeId === 'custom') {
         subTypeTitle = customSubTypeTitle || `${activePlatformConfig.name} Custom Package`;
+        finalSubTypeId = `${targetPlatform}-type-${Date.now()}`;
+        try {
+          await addProductPackage(targetPlatform, {
+            id: finalSubTypeId,
+            title: subTypeTitle,
+            platform: activePlatformConfig.name,
+            price: Number(logPrice || 1500),
+            description: logRulesNotes.trim(),
+            has2fa: false
+          });
+          await loadPlatforms();
+        } catch (addErr) {
+          console.warn('Notice creating custom package in catalog:', addErr.message);
+        }
       } else {
         const found = (activePlatformConfig.items || []).find(i => i.id === selectedSubTypeId);
         subTypeTitle = found ? found.title : activePlatformConfig.name;
       }
+
+      const effectiveLogPrice = Number(logPrice || 1500);
 
       const formattedRecords = validRecords.map(r => ({
         username: r.username,
@@ -403,16 +444,19 @@ export default function AdminDashboard({ onShowToast }) {
         twoFactorKey: r.twoFactorKey,
         mail: r.mail,
         mailPassword: r.mailPassword,
-        subTypeId: selectedSubTypeId,
+        rawRecord: r.raw,
+        extraData: r.extraData,
+        rulesNotes: logRulesNotes.trim(),
+        subTypeId: finalSubTypeId,
         subTypeTitle: subTypeTitle,
-        price: Number(logPrice || 1.50)
+        price: effectiveLogPrice
       }));
 
       const res = await adminBulkImportLogs({
         platformId: targetPlatform,
-        subTypeId: selectedSubTypeId,
+        subTypeId: finalSubTypeId,
         subTypeTitle,
-        price: Number(logPrice || 1.50),
+        price: effectiveLogPrice,
         records: formattedRecords,
         onProgress: (prog) => {
           setSyncProgress(prog);
@@ -544,7 +588,8 @@ export default function AdminDashboard({ onShowToast }) {
       tag: '',
       icon: 'generic_globe',
       color: '#38bdf8',
-      demoPrice: '1500'
+      demoPrice: '1500',
+      has2fa: false
     });
     setShowCreatePlatformModal(true);
   };
@@ -570,7 +615,8 @@ export default function AdminDashboard({ onShowToast }) {
         icon: newPlatformForm.icon || 'generic_globe',
         color: newPlatformForm.color || '#38bdf8',
         demoPrice: Number(newPlatformForm.demoPrice || 1500),
-        packages: [] // Platform starts clean with 0 packages until explicitly added
+        packages: [], // Platform starts clean with 0 packages until explicitly added
+        has2fa: Boolean(newPlatformForm.has2fa)
       });
 
       toast(`🎉 Platform "${newPlatformForm.name}" created successfully!`);
@@ -594,7 +640,8 @@ export default function AdminDashboard({ onShowToast }) {
       tag: platform.tag || platform.name,
       icon: platform.icon || 'generic_globe',
       color: platform.color || '#38bdf8',
-      demoPrice: String(platform.demoPrice || 1500)
+      demoPrice: String(platform.demoPrice || 1500),
+      has2fa: Boolean(platform.has2fa ?? platform.has_2fa ?? false)
     });
     setShowEditPlatformModal(true);
   };
@@ -614,7 +661,8 @@ export default function AdminDashboard({ onShowToast }) {
         tag: editingPlatformForm.tag.trim(),
         icon: editingPlatformForm.icon,
         color: editingPlatformForm.color,
-        demoPrice: Number(editingPlatformForm.demoPrice || 1500)
+        demoPrice: Number(editingPlatformForm.demoPrice || 1500),
+        has2fa: Boolean(editingPlatformForm.has2fa)
       });
 
       toast(`🎉 Platform "${editingPlatformForm.name}" updated successfully!`);
@@ -633,7 +681,8 @@ export default function AdminDashboard({ onShowToast }) {
     setNewPackageForm({
       title: '',
       price: String(platform.demoPrice || 1500),
-      description: ''
+      description: '',
+      has2fa: false
     });
     setShowAddPackageModal(true);
   };
@@ -653,7 +702,8 @@ export default function AdminDashboard({ onShowToast }) {
         title: newPackageForm.title.trim(),
         platform: selectedPlatformForPackage.name,
         price: Number(newPackageForm.price || selectedPlatformForPackage.demoPrice || 1500),
-        description: newPackageForm.description.trim()
+        description: newPackageForm.description.trim(),
+        has2fa: Boolean(newPackageForm.has2fa)
       });
 
       toast(`🎉 Product package added to ${selectedPlatformForPackage.name}!`);
@@ -675,7 +725,8 @@ export default function AdminDashboard({ onShowToast }) {
       packageId: pkg.id,
       title: pkg.title,
       price: String(pkg.price !== undefined ? pkg.price : (platform.demoPrice || 1500)),
-      description: pkg.description || ''
+      description: pkg.description || '',
+      has2fa: Boolean(pkg.has2fa ?? pkg.has_2fa ?? false)
     });
     setShowEditPackageModal(true);
   };
@@ -692,7 +743,8 @@ export default function AdminDashboard({ onShowToast }) {
       await updateProductPackage(editingPackageForm.platformId, editingPackageForm.packageId, {
         title: editingPackageForm.title.trim(),
         price: Number(editingPackageForm.price || 1500),
-        description: editingPackageForm.description.trim()
+        description: editingPackageForm.description.trim(),
+        has2fa: Boolean(editingPackageForm.has2fa)
       });
 
       toast(`🎉 Package updated successfully!`);
@@ -888,7 +940,17 @@ export default function AdminDashboard({ onShowToast }) {
                       if (e.target.value === '__CREATE_NEW__') {
                         handleOpenCreatePlatform();
                       } else {
-                        setTargetPlatform(e.target.value);
+                        const newPlatId = e.target.value;
+                        setTargetPlatform(newPlatId);
+                        const list = platforms.length > 0 ? platforms : PLATFORM_CATEGORIES;
+                        const newPlat = list.find(p => p.id === newPlatId);
+                        if (newPlat && newPlat.items && newPlat.items.length > 0) {
+                          setSelectedSubTypeId(newPlat.items[0].id);
+                          setLogPrice(Number(newPlat.items[0].price || newPlat.demoPrice || 1500).toFixed(0));
+                        } else {
+                          setSelectedSubTypeId('custom');
+                          setLogPrice(Number(newPlat?.demoPrice || 1500).toFixed(0));
+                        }
                       }
                     }}
                   >
@@ -960,6 +1022,36 @@ export default function AdminDashboard({ onShowToast }) {
                     setHasParsed(false);
                   }}
                   placeholder={`Paste account logs for ${activePlatformConfig.name} here (1 account per line):\n${generateSampleLine(activePlatformSchema)}`}
+                />
+              </div>
+
+              {/* Extra Rules & Description Field */}
+              <div className="ingestion-textarea-wrapper" style={{ marginTop: '16px' }}>
+                <div className="ingestion-textarea-header">
+                  <div>
+                    <span style={{ fontWeight: 600 }}>📜 Package Rules, Description &amp; Usage Instructions (Optional)</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: '8px' }}>
+                      (Included in buyer&apos;s downloaded .txt file)
+                    </span>
+                  </div>
+                  {logRulesNotes && (
+                    <button
+                      type="button"
+                      style={{ background: 'none', border: 'none', color: '#ef4444', fontSize: '0.78rem', cursor: 'pointer', fontWeight: 600 }}
+                      onClick={() => setLogRulesNotes('')}
+                      title="Clear rules description field"
+                    >
+                      ✕ Clear Description
+                    </button>
+                  )}
+                </div>
+                <textarea 
+                  className="ingestion-textarea"
+                  rows={3}
+                  value={logRulesNotes}
+                  onChange={(e) => setLogRulesNotes(e.target.value)}
+                  placeholder="e.g. Set paid VPN to Chicago | Login immediately upon receipt | Do not change security info within 48h | 1 hour replacement warranty. (Only included in downloaded .txt file)"
+                  style={{ minHeight: '80px', fontSize: '0.86rem' }}
                 />
               </div>
 
@@ -1992,6 +2084,21 @@ export default function AdminDashboard({ onShowToast }) {
                 />
               </div>
 
+              <div className="ingestion-field-group platform-form-full">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={newPlatformForm.has2fa}
+                    onChange={(e) => setNewPlatformForm({ ...newPlatformForm, has2fa: e.target.checked })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#38bdf8' }}
+                  />
+                  <span style={{ fontWeight: 600, color: '#fff' }}>Enable 2FA Badge for this Platform</span>
+                </label>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  If checked, packages under this category show the 2FA badge unless customized. (Disabled by default)
+                </span>
+              </div>
+
               <div className="platform-form-full" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
                 <button 
                   type="button" 
@@ -2079,6 +2186,21 @@ export default function AdminDashboard({ onShowToast }) {
                   value={newPackageForm.description}
                   onChange={(e) => setNewPackageForm({ ...newPackageForm, description: e.target.value })}
                 />
+              </div>
+
+              <div className="ingestion-field-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={newPackageForm.has2fa}
+                    onChange={(e) => setNewPackageForm({ ...newPackageForm, has2fa: e.target.checked })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#38bdf8' }}
+                  />
+                  <span style={{ fontWeight: 600, color: '#fff' }}>2FA Authentication Included</span>
+                </label>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Displays the &quot;✓ 2FA Included&quot; badge on this package in the marketplace. (Disabled by default)
+                </span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
@@ -2194,6 +2316,21 @@ export default function AdminDashboard({ onShowToast }) {
                 />
               </div>
 
+              <div className="ingestion-field-group platform-form-full">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={editingPlatformForm.has2fa}
+                    onChange={(e) => setEditingPlatformForm({ ...editingPlatformForm, has2fa: e.target.checked })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#38bdf8' }}
+                  />
+                  <span style={{ fontWeight: 600, color: '#fff' }}>Enable 2FA Badge for this Platform</span>
+                </label>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  If checked, packages under this category show the 2FA badge unless customized. (Disabled by default)
+                </span>
+              </div>
+
               <div className="platform-form-full" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '12px' }}>
                 <button 
                   type="button" 
@@ -2271,6 +2408,21 @@ export default function AdminDashboard({ onShowToast }) {
                   value={editingPackageForm.description}
                   onChange={(e) => setEditingPackageForm({ ...editingPackageForm, description: e.target.value })}
                 />
+              </div>
+
+              <div className="ingestion-field-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={editingPackageForm.has2fa}
+                    onChange={(e) => setEditingPackageForm({ ...editingPackageForm, has2fa: e.target.checked })}
+                    style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: '#38bdf8' }}
+                  />
+                  <span style={{ fontWeight: 600, color: '#fff' }}>2FA Authentication Included</span>
+                </label>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Displays the &quot;✓ 2FA Included&quot; badge on this package in the marketplace. (Disabled by default)
+                </span>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>

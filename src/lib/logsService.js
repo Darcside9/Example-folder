@@ -67,10 +67,11 @@ export function exportCredentialsAsText(cred) {
   if (hasMail) credLines.push(`Email Address      : ${cred.mail}`);
   if (hasMailPass) credLines.push(`Email Password     : ${cred.mailPassword}`);
 
-  // Include any extra custom platform fields
-  if (cred.extraData && typeof cred.extraData === 'object') {
-    Object.entries(cred.extraData).forEach(([k, v]) => {
-      if (['username', 'password', 'twoFactorKey', 'mail', 'mailPassword'].includes(k)) return;
+  // Include any extra custom platform delimiter fields
+  const extraFieldsObj = cred.extraData || (cred.custom_data ? (typeof cred.custom_data === 'string' ? JSON.parse(cred.custom_data) : cred.custom_data) : null);
+  if (extraFieldsObj && typeof extraFieldsObj === 'object') {
+    Object.entries(extraFieldsObj).forEach(([k, v]) => {
+      if (['username', 'password', 'twoFactorKey', 'two_factor_key', 'mail', 'mailPassword', 'mail_password', 'rules', 'rulesNotes', 'rules_notes'].includes(k)) return;
       if (v) {
         const label = k.replace(/^custom_/, '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
         credLines.push(`${label.padEnd(19)}: ${v}`);
@@ -78,12 +79,24 @@ export function exportCredentialsAsText(cred) {
     });
   }
 
-  let twoFaInstructions = has2FA ? `
+  // Check for rules / description
+  const rulesContent = cred.rulesNotes || cred.rules || extraFieldsObj?.rules || extraFieldsObj?.rules_notes || extraFieldsObj?.notes || cred.description || '';
+  const rulesSection = rulesContent.trim() ? `
+=======================================================
+RULES, ACCOUNT DESCRIPTION & USAGE GUIDELINES:
+=======================================================
+${rulesContent.trim()}
+` : '';
+
+  const twoFaInstructions = has2FA ? `
 =======================================================
 INSTRUCTIONS FOR 2FA AUTHENTICATION:
 1. Open any authenticator app or visit https://2fa.live
 2. Paste the 2FA Secret Key into the generator
 3. Copy the 6-digit dynamic code to log in.` : '';
+
+  // Real delimiter line (custom format) or fallback
+  const rawLineCombo = cred.rawRecord || cred.comboString || `${cred.username}:${cred.password}${hasMail ? `:${cred.mail}` : ''}${hasMailPass ? `:${cred.mailPassword}` : ''}${has2FA ? `:${cred.twoFactorKey}` : ''}`;
 
   return `=======================================================
 CHRIS SHOPPER — OFFICIAL ACCOUNT LOG DELIVERY
@@ -98,10 +111,11 @@ Retention Notice   : This account log is stored in your history
 ----------------- ACCOUNT CREDENTIALS -----------------
 ${credLines.join('\n')}
 
------------------ ONE-LINE COMBO FORMAT ----------------
-${cred.comboString || `${cred.username}:${cred.password}${hasMail ? `:${cred.mail}` : ''}${hasMailPass ? `:${cred.mailPassword}` : ''}${has2FA ? `:${cred.twoFactorKey}` : ''}`}
-${twoFaInstructions}
-For technical support, message us on WhatsApp: ${siteConfig?.whatsappNumber || '+1234567890'}
+----------------- RAW COMBO / DELIMITER FORMAT --------
+${rawLineCombo}
+${rulesSection}${twoFaInstructions}
+=======================================================
+For technical support, message us on WhatsApp: ${siteConfig?.whatsappNumber || '+2349135560229'}
 =======================================================`;
 }
 
@@ -154,11 +168,29 @@ export function exportBulkCredentialsAsText(credentialsList) {
     if (cred.twoFactorKey) fileLines.push(`2FA Secret Key     : ${cred.twoFactorKey}`);
     if (cred.mail) fileLines.push(`Email Address      : ${cred.mail}`);
     if (cred.mailPassword) fileLines.push(`Email Password     : ${cred.mailPassword}`);
-    fileLines.push(`One-Line Combo     : ${cred.comboString || `${cred.username}:${cred.password}`}`);
+
+    const extraFieldsObj = cred.extraData || (cred.custom_data ? (typeof cred.custom_data === 'string' ? JSON.parse(cred.custom_data) : cred.custom_data) : null);
+    if (extraFieldsObj && typeof extraFieldsObj === 'object') {
+      Object.entries(extraFieldsObj).forEach(([k, v]) => {
+        if (['username', 'password', 'twoFactorKey', 'two_factor_key', 'mail', 'mailPassword', 'mail_password', 'rules', 'rulesNotes', 'rules_notes'].includes(k)) return;
+        if (v) {
+          const label = k.replace(/^custom_/, '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+          fileLines.push(`${label.padEnd(19)}: ${v}`);
+        }
+      });
+    }
+
+    const rulesContent = cred.rulesNotes || cred.rules || extraFieldsObj?.rules || extraFieldsObj?.rules_notes || extraFieldsObj?.notes || cred.description || '';
+    if (rulesContent.trim()) {
+      fileLines.push(`Rules / Notes      : ${rulesContent.trim()}`);
+    }
+
+    const rawLine = cred.rawRecord || cred.comboString || `${cred.username}:${cred.password}`;
+    fileLines.push(`Raw Combo Format   : ${rawLine}`);
     fileLines.push('-------------------------------------------------------');
   });
 
-  fileLines.push(`Need support? Reach us on WhatsApp: ${siteConfig?.whatsappNumber || '+1234567890'}`);
+  fileLines.push(`Need support? Reach us on WhatsApp: ${siteConfig?.whatsappNumber || '+2349135560229'}`);
   return fileLines.join('\n');
 }
 

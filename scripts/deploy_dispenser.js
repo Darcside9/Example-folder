@@ -6,10 +6,15 @@ import { execSync } from 'child_process';
 
 const envContent = fs.readFileSync('.env', 'utf8');
 const env = {};
-envContent.split('\n').forEach(line => {
-  const [k, ...v] = line.trim().split('=');
-  if (k && !k.startsWith('#')) {
-    env[k] = v.join('=');
+envContent.split(/\r?\n/).forEach(line => {
+  const trimmed = line.trim();
+  if (trimmed && !trimmed.startsWith('#')) {
+    const idx = trimmed.indexOf('=');
+    if (idx > 0) {
+      const k = trimmed.substring(0, idx).trim();
+      const v = trimmed.substring(idx + 1).trim();
+      env[k] = v;
+    }
   }
 });
 

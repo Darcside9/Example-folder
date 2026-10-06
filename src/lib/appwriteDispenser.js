@@ -188,7 +188,10 @@ export async function fetchUserPurchasedLogs(userId = null) {
         twoFactorKey: det.twoFactorKey || '',
         mail: det.mail || '',
         mailPassword: det.mailPassword || '',
-        comboString: det.comboString || (det.password ? `${det.username || d.reference}:${det.password}` : `${det.username || d.reference}`),
+        rawRecord: det.rawRecord || '',
+        extraData: det.extraData || null,
+        rulesNotes: det.rulesNotes || '',
+        comboString: det.rawRecord || det.comboString || (det.password ? `${det.username || d.reference}:${det.password}` : `${det.username || d.reference}`),
         price: Number(d.price || det.price || 0),
         purchasedAt: d.$createdAt,
         userId: d.user_id
@@ -213,7 +216,10 @@ export async function fetchUserPurchasedLogs(userId = null) {
           twoFactorKey: merged[matchIdx].twoFactorKey || cl.twoFactorKey || '',
           mail: merged[matchIdx].mail || cl.mail || '',
           mailPassword: merged[matchIdx].mailPassword || cl.mailPassword || '',
-          comboString: merged[matchIdx].comboString || cl.comboString || '',
+          rawRecord: merged[matchIdx].rawRecord || cl.rawRecord || '',
+          extraData: merged[matchIdx].extraData || cl.extraData || null,
+          rulesNotes: merged[matchIdx].rulesNotes || cl.rulesNotes || '',
+          comboString: merged[matchIdx].rawRecord || merged[matchIdx].comboString || cl.rawRecord || cl.comboString || '',
           price: cl.price || merged[matchIdx].price || 0,
           purchasedAt: cl.purchasedAt || merged[matchIdx].purchasedAt
         };
@@ -293,6 +299,9 @@ export async function fetchAvailableAccountLogs(platformId = null) {
           if (parsed.success && Array.isArray(parsed.accounts)) {
             availableAccounts = parsed.accounts.map(acc => ({
               ...acc,
+              rawRecord: acc.rawRecord || acc.raw_record || '',
+              extraData: acc.extraData || (acc.custom_data ? (typeof acc.custom_data === 'string' ? JSON.parse(acc.custom_data) : acc.custom_data) : null),
+              rulesNotes: acc.rulesNotes || acc.rules_notes || '',
               price: acc.price !== undefined ? Number(acc.price) : platformBasePrice
             }));
           }
@@ -305,7 +314,7 @@ export async function fetchAvailableAccountLogs(platformId = null) {
             colId,
             [
               Query.equal('status', 'available'),
-              Query.select(['username', 'sub_type_id', 'sub_type_title', 'price', 'status']),
+              Query.select(['username', 'sub_type_id', 'sub_type_title', 'price', 'status', 'raw_record', 'custom_data', 'rules_notes']),
               Query.limit(100)
             ]
           );
@@ -316,6 +325,9 @@ export async function fetchAvailableAccountLogs(platformId = null) {
             subTypeTitle: d.sub_type_title,
             price: d.price !== undefined ? Number(d.price) : platformBasePrice,
             status: d.status,
+            rawRecord: d.raw_record || '',
+            extraData: d.custom_data ? (typeof d.custom_data === 'string' ? JSON.parse(d.custom_data) : d.custom_data) : null,
+            rulesNotes: d.rules_notes || '',
             isAvailable: true
           }));
         } catch (dbErr) {
@@ -326,7 +338,11 @@ export async function fetchAvailableAccountLogs(platformId = null) {
 
     // 3. Map accounts to their respective sub-type configurations with fallback seed inventory
     const itemsWithStock = (cat.items || []).map(subType => {
-      let matchingAccounts = availableAccounts.filter(a => a.subTypeId === subType.id);
+      let matchingAccounts = availableAccounts.filter(a => 
+        a.subTypeId === subType.id ||
+        (a.subTypeTitle && a.subTypeTitle.trim().toLowerCase() === subType.title.trim().toLowerCase()) ||
+        ((cat.items || []).length === 1)
+      );
 
       // If no live documents in Appwrite collection for this subType, fallback to structured seed inventory
       if (matchingAccounts.length === 0 && DEFAULT_SEED_INVENTORY[cat.id]?.[subType.id]) {
@@ -424,12 +440,17 @@ export async function dispenseSpecificAccountLog({
       const result = JSON.parse(execution.responseBody);
       if (result.success && result.credential) {
         markUsernameClaimed(username);
-        savePurchasedLog({
+        const cred = {
           ...result.credential,
+          rawRecord: result.credential.rawRecord || result.credential.raw_record || '',
+          extraData: result.credential.extraData || (result.credential.custom_data ? (typeof result.credential.custom_data === 'string' ? JSON.parse(result.credential.custom_data) : result.credential.custom_data) : null),
+          rulesNotes: result.credential.rulesNotes || result.credential.rules_notes || '',
+          comboString: result.credential.rawRecord || result.credential.raw_record || result.credential.comboString || '',
           userId,
           price: result.credential.price || requiredPrice,
           purchasedAt: result.credential.purchasedAt || new Date().toISOString()
-        });
+        };
+        savePurchasedLog(cred);
 
         if (result.newBalance !== undefined) {
           try {
@@ -444,7 +465,7 @@ export async function dispenseSpecificAccountLog({
 
         return { 
           success: true, 
-          credential: result.credential,
+          credential: cred,
           newBalance: result.newBalance 
         };
       } else if (result.error) {
@@ -498,12 +519,16 @@ export async function dispenseSpecificAccountLog({
           platform: platformId.charAt(0).toUpperCase() + platformId.slice(1),
           platformId,
           subTypeId,
+          subTypeTitle: doc.sub_type_title || '',
           username: doc.username,
           password: doc.password,
           twoFactorKey: doc.two_factor_key,
           mail: doc.mail,
           mailPassword: doc.mail_password,
-          comboString: `${doc.username}:${doc.password}:${doc.mail || ''}:${doc.mail_password || ''}:${doc.two_factor_key || ''}`,
+          rawRecord: doc.raw_record || '',
+          extraData: doc.custom_data ? (typeof doc.custom_data === 'string' ? JSON.parse(doc.custom_data) : doc.custom_data) : null,
+          rulesNotes: doc.rules_notes || '',
+          comboString: doc.raw_record || `${doc.username}:${doc.password}:${doc.mail || ''}:${doc.mail_password || ''}:${doc.two_factor_key || ''}`,
           price: requiredPrice,
           purchasedAt: new Date().toISOString(),
           userId
@@ -688,7 +713,8 @@ export async function bulkDispenseAccountLogs({
     const twoFa = seedCred?.twoFactorKey || 'JBSWY3DPEHPK3PXP';
     const mail = seedCred?.mail || `${item.username}@outlook.com`;
     const mailPass = seedCred?.mailPassword || 'MailPass2026!';
-    const combo = seedCred?.comboString || `${item.username}:${pwd}:${mail}:${mailPass}:${twoFa}`;
+    const rawRec = item.rawRecord || seedCred?.rawRecord || seedCred?.comboString || `${item.username}:${pwd}:${mail}:${mailPass}:${twoFa}`;
+    const combo = rawRec;
 
     const cred = {
       id: 'dispense_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
@@ -701,6 +727,9 @@ export async function bulkDispenseAccountLogs({
       twoFactorKey: twoFa,
       mail: mail,
       mailPassword: mailPass,
+      rawRecord: rawRec,
+      extraData: item.extraData || seedCred?.extraData || null,
+      rulesNotes: item.rulesNotes || seedCred?.rulesNotes || '',
       comboString: combo,
       price: Number(item.price),
       purchasedAt: purchasedAt,
@@ -858,13 +887,16 @@ export async function adminBulkImportLogs({
         {
           username: rec.username,
           password: rec.password,
-          two_factor_key: rec.twoFactorKey,
-          mail: rec.mail,
-          mail_password: rec.mailPassword,
+          two_factor_key: rec.twoFactorKey || rec.two_factor_key || '',
+          mail: rec.mail || '',
+          mail_password: rec.mailPassword || rec.mail_password || '',
           sub_type_id: subTypeId,
           sub_type_title: subTypeTitle || '',
           price: Number(price || 1500),
-          status: 'available'
+          status: 'available',
+          raw_record: rec.rawRecord || rec.raw_record || rec.raw || '',
+          custom_data: typeof rec.custom_data === 'string' ? rec.custom_data : JSON.stringify(rec.extraData || rec.customData || {}),
+          rules_notes: rec.rulesNotes || rec.rules_notes || ''
         }
       );
       successCount++;

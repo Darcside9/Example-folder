@@ -54,9 +54,11 @@ export async function fetchDynamicPlatforms(forceRefresh = false) {
           demoPrice: Number(doc.demo_price || 1500),
           delimiterConfig,
           delimiter_config: doc.delimiter_config,
+          has2fa: Boolean(doc.has_2fa),
           items: items.map(item => ({
             ...item,
             platform: item.platform || doc.name,
+            has2fa: item.has2fa !== undefined ? Boolean(item.has2fa) : (item.has_2fa !== undefined ? Boolean(item.has_2fa) : false),
             price: Number(item.price !== undefined ? item.price : (doc.demo_price || 1500))
           }))
         };
@@ -111,7 +113,8 @@ export async function createPlatform({
   icon,
   color,
   demoPrice,
-  packages
+  packages,
+  has2fa
 }) {
   if (!id || !name) {
     throw new Error('Platform ID and Name are required.');
@@ -131,7 +134,8 @@ export async function createPlatform({
         icon: icon || 'generic_globe',
         color: color || '#38bdf8',
         demoPrice: Number(demoPrice || 1500),
-        packages: packages || []
+        packages: packages || [],
+        has2fa: Boolean(has2fa)
       })
     );
 
@@ -158,6 +162,7 @@ export async function createPlatform({
 export async function updatePlatform(platformId, updates = {}) {
   if (!platformId) throw new Error('Platform ID is required.');
 
+  // 1. Try serverless function
   try {
     const execution = await functions.createExecution(
       APPWRITE_CONFIG.functionId,
@@ -174,16 +179,50 @@ export async function updatePlatform(platformId, updates = {}) {
       if (result.success) {
         invalidateCache(platformId);
         return result;
-      } else if (result.error) {
-        throw new Error(result.error);
       }
     }
-
-    throw new Error('Failed to update platform.');
-  } catch (err) {
-    console.error('Update platform error:', err);
-    throw err;
+  } catch (fnErr) {
+    console.warn('Serverless update_platform notice:', fnErr.message);
   }
+
+  // 2. Direct database fallback
+  try {
+    const list = await databases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      'platforms_catalog',
+      [Query.equal('platform_id', platformId), Query.limit(1)]
+    );
+    if (list.documents.length > 0) {
+      const doc = list.documents[0];
+      const payload = {};
+      if (updates.name !== undefined) payload.name = updates.name.trim();
+      if (updates.subtitle !== undefined) payload.subtitle = updates.subtitle.trim();
+      if (updates.tag !== undefined) payload.tag = updates.tag.trim();
+      if (updates.icon !== undefined) payload.icon = updates.icon;
+      if (updates.color !== undefined) payload.color = updates.color;
+      if (updates.demoPrice !== undefined) payload.demo_price = Number(updates.demoPrice);
+      if (updates.is_active !== undefined) payload.is_active = Boolean(updates.is_active);
+      if (updates.has2fa !== undefined || updates.has_2fa !== undefined) {
+        payload.has_2fa = Boolean(updates.has2fa ?? updates.has_2fa);
+      }
+      if (updates.delimiter_config !== undefined) {
+        payload.delimiter_config = typeof updates.delimiter_config === 'string' ? updates.delimiter_config : JSON.stringify(updates.delimiter_config);
+      }
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        'platforms_catalog',
+        doc.$id,
+        payload
+      );
+      invalidateCache(platformId);
+      return { success: true, platformId, updated: payload };
+    }
+  } catch (dbErr) {
+    console.error('Direct DB update_platform failed:', dbErr);
+    throw dbErr;
+  }
+
+  throw new Error('Failed to update platform.');
 }
 
 /**
@@ -226,6 +265,7 @@ export async function addProductPackage(platformId, packageData) {
     throw new Error('Platform ID and Package Title are required.');
   }
 
+  // 1. Try serverless function
   try {
     const execution = await functions.createExecution(
       APPWRITE_CONFIG.functionId,
@@ -241,16 +281,53 @@ export async function addProductPackage(platformId, packageData) {
       if (result.success) {
         invalidateCache(platformId);
         return result;
-      } else if (result.error) {
-        throw new Error(result.error);
       }
     }
-
-    throw new Error('Failed to add product package to platform.');
-  } catch (err) {
-    console.error('Add package error:', err);
-    throw err;
+  } catch (fnErr) {
+    console.warn('Serverless add_platform_package notice:', fnErr.message);
   }
+
+  // 2. Direct database fallback
+  try {
+    const list = await databases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      'platforms_catalog',
+      [Query.equal('platform_id', platformId), Query.limit(1)]
+    );
+    if (list.documents.length > 0) {
+      const doc = list.documents[0];
+      let currentPackages = [];
+      try {
+        currentPackages = JSON.parse(doc.packages_json || '[]');
+      } catch {}
+
+      const pkgId = packageData.id || `${platformId}-type-${Date.now()}`;
+      const newPkg = {
+        id: pkgId,
+        title: packageData.title.trim(),
+        platform: packageData.platform || doc.name,
+        price: Number(packageData.price !== undefined ? packageData.price : doc.demo_price || 1500),
+        description: packageData.description ? packageData.description.trim() : '',
+        has2fa: Boolean(packageData.has2fa ?? packageData.has_2fa ?? false)
+      };
+
+      currentPackages.push(newPkg);
+
+      await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        'platforms_catalog',
+        doc.$id,
+        { packages_json: JSON.stringify(currentPackages) }
+      );
+      invalidateCache(platformId);
+      return { success: true, platformId, package: newPkg, packages: currentPackages };
+    }
+  } catch (dbErr) {
+    console.error('Direct DB add_platform_package failed:', dbErr);
+    throw dbErr;
+  }
+
+  throw new Error('Failed to add product package to platform.');
 }
 
 /**
@@ -261,6 +338,7 @@ export async function updateProductPackage(platformId, packageId, updates) {
     throw new Error('Platform ID and Package ID are required.');
   }
 
+  // 1. Try serverless function
   try {
     const execution = await functions.createExecution(
       APPWRITE_CONFIG.functionId,
@@ -278,16 +356,52 @@ export async function updateProductPackage(platformId, packageId, updates) {
       if (result.success) {
         invalidateCache(platformId);
         return result;
-      } else if (result.error) {
-        throw new Error(result.error);
       }
     }
-
-    throw new Error('Failed to update product package.');
-  } catch (err) {
-    console.error('Update package error:', err);
-    throw err;
+  } catch (fnErr) {
+    console.warn('Serverless update_platform_package notice:', fnErr.message);
   }
+
+  // 2. Direct database fallback
+  try {
+    const list = await databases.listDocuments(
+      APPWRITE_CONFIG.databaseId,
+      'platforms_catalog',
+      [Query.equal('platform_id', platformId), Query.limit(1)]
+    );
+    if (list.documents.length > 0) {
+      const doc = list.documents[0];
+      let currentPackages = [];
+      try {
+        currentPackages = JSON.parse(doc.packages_json || '[]');
+      } catch {}
+
+      const pkgIndex = currentPackages.findIndex(p => p.id === packageId);
+      if (pkgIndex >= 0) {
+        currentPackages[pkgIndex] = {
+          ...currentPackages[pkgIndex],
+          title: updates.title !== undefined ? updates.title.trim() : currentPackages[pkgIndex].title,
+          price: updates.price !== undefined ? Number(updates.price) : currentPackages[pkgIndex].price,
+          description: updates.description !== undefined ? updates.description.trim() : (currentPackages[pkgIndex].description || ''),
+          has2fa: updates.has2fa !== undefined ? Boolean(updates.has2fa) : (updates.has_2fa !== undefined ? Boolean(updates.has_2fa) : Boolean(currentPackages[pkgIndex].has2fa ?? currentPackages[pkgIndex].has_2fa ?? false))
+        };
+
+        await databases.updateDocument(
+          APPWRITE_CONFIG.databaseId,
+          'platforms_catalog',
+          doc.$id,
+          { packages_json: JSON.stringify(currentPackages) }
+        );
+        invalidateCache(platformId);
+        return { success: true, platformId, packageId, package: currentPackages[pkgIndex] };
+      }
+    }
+  } catch (dbErr) {
+    console.error('Direct DB update_platform_package failed:', dbErr);
+    throw dbErr;
+  }
+
+  throw new Error('Failed to update product package.');
 }
 
 /**

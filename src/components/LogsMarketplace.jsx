@@ -639,9 +639,11 @@ export default function LogsMarketplace({
                                       <span className="accszone-price-tag font-mono">
                                         {siteConfig.formatNaira(item.price !== undefined ? item.price : (cat.demoPrice || 1500))}
                                       </span>
-                                      <span className="accszone-item-tag">
-                                        ✓ 2FA + Mail Access
-                                      </span>
+                                      {(item.has2fa === true || (item.has2fa === undefined && cat.has2fa === true)) && (
+                                        <span className="accszone-item-tag">
+                                          ✓ 2FA Included
+                                        </span>
+                                      )}
                                       <span className={`accszone-choose-btn ${isSoldOut ? 'disabled' : ''}`}>
                                         {isSoldOut ? 'Sold Out' : 'Choose Username →'}
                                       </span>
@@ -906,11 +908,11 @@ export default function LogsMarketplace({
               </button>
             </div>
 
-            {/* 30-Day Expiry Notice */}
+            {/* 30-Day Expiry & Rules Notice */}
             <div className="single-expiry-notice-bar">
               <span>⏰</span>
               <span>
-                <strong>30-Day Expiry Notice:</strong> This account log will be automatically purged from your Chris Shopper history after 30 days. Be sure to copy or download your credentials now.
+                <strong>30-Day Expiry Notice:</strong> This account log will be automatically purged from your Chris Shopper history after 30 days. Full platform usage guidelines, rules, and notes are included inside the downloaded <code>.txt</code> file.
               </span>
             </div>
 
@@ -1016,8 +1018,14 @@ export default function LogsMarketplace({
 
               {/* Combo String */}
               <div className="combo-string-box">
-                <div className="combo-string-label">Full Combo (user:pass:mail:mailpass:2fa):</div>
-                <div className="combo-string-val">{deliveryModal.credential.comboString}</div>
+                <div className="combo-string-label">Full Credentials Line / Combo:</div>
+                <div className="combo-string-val">{deliveryModal.credential.rawRecord || deliveryModal.credential.comboString}</div>
+              </div>
+
+              {/* Rules and Guidelines Notice */}
+              <div style={{ marginTop: '10px', fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>💡</span>
+                <span>Account rules, proxies, and usage descriptions are fully detailed inside your downloaded <code>.txt</code> file.</span>
               </div>
             </div>
 
@@ -1026,9 +1034,9 @@ export default function LogsMarketplace({
               <button
                 type="button"
                 className="btn-action-primary"
-                onClick={() => handleCopy(deliveryModal.credential.comboString, 'Full Combo')}
+                onClick={() => handleCopy(deliveryModal.credential.rawRecord || deliveryModal.credential.comboString, 'Full Combo')}
               >
-                📋 Copy Full Combo
+                📋 Copy Full Credentials
               </button>
               <button
                 type="button"
@@ -1078,9 +1086,9 @@ export default function LogsMarketplace({
               <div className="bulk-directive-info-box">
                 <span className="directive-info-icon">📁</span>
                 <div className="directive-info-text">
-                  <strong>Individual Credentials Ready in Purchase History:</strong>
+                  <strong>Individual Credentials &amp; Usage Rules Ready:</strong>
                   <p>
-                    Because you purchased multiple accounts across different platforms with distinct login protocols (Outlook Webmail, 2FA dynamic tokens, proxy rules), each account log has been individually organized in your <strong>Purchase History</strong> where you can copy passwords, generate 2FA tokens, and download .txt files.
+                    Because you purchased multiple accounts across different platforms with distinct login protocols (webmail, 2FA dynamic tokens, proxy rules), each account log has been individually organized in your <strong>Purchase History</strong> where you can copy passwords, generate 2FA tokens, and download credentials with full account rules and guidelines included in the downloaded <code>.txt</code> files.
                   </p>
                 </div>
               </div>

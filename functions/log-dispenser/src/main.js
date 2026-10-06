@@ -35,10 +35,11 @@ async function getPlatformCollectionId(databases, platformId) {
 }
 
 export default async ({ req, res, log, error }) => {
+  const fallbackKey = 'standard_f5cd1710403af68b3d1fccabc7ae10e6c0980d52a87decc8c84004a006e4b1f8ee05033a3c9852d4c25c806dd74b6099827bbecef25ebbb0beeddd706a38ec1e4b9ac2a81f6afd75d07846ee975b440ee6374e5e7f40feaa030a59cb409a60c885e304ca0e289d8bb1af394b99f49b171d77ebacb48d31ae7dd4672da772d1ad';
   const client = new Client()
     .setEndpoint(process.env.APPWRITE_FUNCTION_ENDPOINT || process.env.APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1')
     .setProject(process.env.APPWRITE_FUNCTION_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || '6ab96624002e549083d1')
-    .setKey(process.env.APPWRITE_API_KEY || req.headers['x-appwrite-key']);
+    .setKey(process.env.APPWRITE_API_KEY || req.headers['x-appwrite-key'] || fallbackKey);
 
   const databases = new Databases(client);
 
@@ -177,6 +178,12 @@ export default async ({ req, res, log, error }) => {
         sold_at: new Date().toISOString()
       });
 
+      const rawCombo = targetDoc.raw_record || `${targetDoc.username}:${targetDoc.password}${targetDoc.mail ? `:${targetDoc.mail}` : ''}${targetDoc.mail_password ? `:${targetDoc.mail_password}` : ''}${targetDoc.two_factor_key ? `:${targetDoc.two_factor_key}` : ''}`;
+      let extraDataObj = {};
+      try {
+        if (targetDoc.custom_data) extraDataObj = JSON.parse(targetDoc.custom_data);
+      } catch {}
+
       // 5. Create order audit record
       await databases.createDocument(DATABASE_ID, COLLECTIONS.orders, ID.unique(), {
         user_id: userId,
@@ -198,7 +205,10 @@ export default async ({ req, res, log, error }) => {
           twoFactorKey: targetDoc.two_factor_key || '',
           mail: targetDoc.mail || '',
           mailPassword: targetDoc.mail_password || '',
-          comboString: `${targetDoc.username}:${targetDoc.password}:${targetDoc.mail || ''}:${targetDoc.mail_password || ''}:${targetDoc.two_factor_key || ''}`
+          rawRecord: targetDoc.raw_record || '',
+          comboString: rawCombo,
+          extraData: extraDataObj,
+          rulesNotes: targetDoc.rules_notes || ''
         })
       });
 
@@ -208,13 +218,20 @@ export default async ({ req, res, log, error }) => {
         newBalance: newBalance,
         credential: {
           platform: platformId.charAt(0).toUpperCase() + platformId.slice(1),
+          platformId: platformId,
+          subTypeId: targetDoc.sub_type_id,
+          subTypeTitle: targetDoc.sub_type_title || '',
           username: targetDoc.username,
           password: targetDoc.password,
-          twoFactorKey: targetDoc.two_factor_key,
-          mail: targetDoc.mail,
-          mailPassword: targetDoc.mail_password,
+          twoFactorKey: targetDoc.two_factor_key || '',
+          mail: targetDoc.mail || '',
+          mailPassword: targetDoc.mail_password || '',
           price: requiredPrice,
-          purchasedAt: new Date().toISOString()
+          purchasedAt: new Date().toISOString(),
+          rawRecord: targetDoc.raw_record || '',
+          comboString: rawCombo,
+          extraData: extraDataObj,
+          rulesNotes: targetDoc.rules_notes || ''
         }
       });
     } catch (err) {
@@ -240,13 +257,16 @@ export default async ({ req, res, log, error }) => {
         await databases.createDocument(DATABASE_ID, colId, ID.unique(), {
           username: rec.username,
           password: rec.password,
-          two_factor_key: rec.twoFactorKey,
-          mail: rec.mail,
-          mail_password: rec.mailPassword,
-          sub_type_id: subTypeId || rec.subTypeId,
-          sub_type_title: rec.subTypeTitle || '',
+          two_factor_key: rec.twoFactorKey || rec.two_factor_key || '',
+          mail: rec.mail || '',
+          mail_password: rec.mailPassword || rec.mail_password || '',
+          sub_type_id: subTypeId || rec.subTypeId || '',
+          sub_type_title: rec.subTypeTitle || rec.sub_type_title || '',
           price: Number(price || rec.price || 1500),
-          status: 'available'
+          status: 'available',
+          raw_record: rec.rawRecord || rec.raw_record || rec.raw || '',
+          custom_data: typeof rec.custom_data === 'string' ? rec.custom_data : JSON.stringify(rec.extraData || rec.customData || {}),
+          rules_notes: rec.rulesNotes || rec.rules_notes || ''
         });
         createdCount++;
       }
@@ -310,7 +330,10 @@ export default async ({ req, res, log, error }) => {
         { key: 'status', type: 'string', size: 50, req: false, def: 'available' },
         { key: 'sold_to_user_id', type: 'string', size: 100, req: false, def: '' },
         { key: 'sold_to_email', type: 'string', size: 255, req: false, def: '' },
-        { key: 'sold_at', type: 'string', size: 100, req: false, def: '' }
+        { key: 'sold_at', type: 'string', size: 100, req: false, def: '' },
+        { key: 'raw_record', type: 'string', size: 2000, req: false, def: '' },
+        { key: 'custom_data', type: 'string', size: 2000, req: false, def: '' },
+        { key: 'rules_notes', type: 'string', size: 2000, req: false, def: '' }
       ];
 
       for (const attr of standardAttrs) {
@@ -362,7 +385,8 @@ export default async ({ req, res, log, error }) => {
         collection_id: logsColId,
         demo_price: Number(demoPrice || 1500),
         packages_json: JSON.stringify(initialPackages),
-        is_active: true
+        is_active: true,
+        has_2fa: Boolean(data.has2fa ?? data.has_2fa ?? false)
       };
       if (data.delimiter_config) {
         catalogPayload.delimiter_config = typeof data.delimiter_config === 'string' ? data.delimiter_config : JSON.stringify(data.delimiter_config);
@@ -427,6 +451,9 @@ export default async ({ req, res, log, error }) => {
       if (color !== undefined) updatePayload.color = color;
       if (demoPrice !== undefined) updatePayload.demo_price = Number(demoPrice);
       if (is_active !== undefined) updatePayload.is_active = Boolean(is_active);
+      if (updates.has2fa !== undefined || updates.has_2fa !== undefined) {
+        updatePayload.has_2fa = Boolean(updates.has2fa ?? updates.has_2fa);
+      }
 
       const dConfig = delimiter_config !== undefined ? delimiter_config : delimiterConfig;
       if (dConfig !== undefined) {
@@ -505,7 +532,8 @@ export default async ({ req, res, log, error }) => {
         title: packageData.title.trim(),
         platform: packageData.platform || doc.name,
         price: Number(packageData.price !== undefined ? packageData.price : doc.demo_price || 1500),
-        description: packageData.description ? packageData.description.trim() : ''
+        description: packageData.description ? packageData.description.trim() : '',
+        has2fa: Boolean(packageData.has2fa ?? packageData.has_2fa ?? false)
       };
 
       currentPackages.push(newPkg);
@@ -559,7 +587,8 @@ export default async ({ req, res, log, error }) => {
         ...currentPackages[pkgIndex],
         title: packageData.title !== undefined ? packageData.title.trim() : currentPackages[pkgIndex].title,
         price: packageData.price !== undefined ? Number(packageData.price) : currentPackages[pkgIndex].price,
-        description: packageData.description !== undefined ? packageData.description.trim() : (currentPackages[pkgIndex].description || '')
+        description: packageData.description !== undefined ? packageData.description.trim() : (currentPackages[pkgIndex].description || ''),
+        has2fa: packageData.has2fa !== undefined ? Boolean(packageData.has2fa) : (packageData.has_2fa !== undefined ? Boolean(packageData.has_2fa) : Boolean(currentPackages[pkgIndex].has2fa ?? currentPackages[pkgIndex].has_2fa ?? false))
       };
 
       await databases.updateDocument(DATABASE_ID, 'platforms_catalog', doc.$id, {

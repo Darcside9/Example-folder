@@ -1028,7 +1028,7 @@ export default function UserDashboard({ user, onSignOut }) {
                 <div className="history-retention-banner">
                   <span className="banner-clock-icon">⏰</span>
                   <span>
-                    <strong>30-Day Auto-Purge Policy:</strong> For customer privacy and data security, purchased account credentials are kept for exactly 30 days from purchase. Please make sure to save or download your credentials before they expire.
+                    <strong>30-Day Auto-Purge Policy:</strong> For customer privacy and data security, purchased account credentials are kept for exactly 30 days from purchase. Platform rules, proxies, and usage descriptions are included inside your downloaded <code>.txt</code> credential files.
                   </span>
                 </div>
 
@@ -1154,8 +1154,8 @@ export default function UserDashboard({ user, onSignOut }) {
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                   <button 
                                     className="btn-simulate-tiny"
-                                    onClick={() => copyToClipboard(log.comboString, 'Combo String')}
-                                    title="Copy Combo"
+                                    onClick={() => copyToClipboard(log.rawRecord || log.comboString, 'Combo String')}
+                                    title="Copy Credentials / Combo"
                                   >
                                     📋 Combo
                                   </button>
