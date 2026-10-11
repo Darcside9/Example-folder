@@ -35,6 +35,12 @@ import {
   generateSampleLine, 
   parseLineWithSchema 
 } from '../lib/delimiterConfig';
+import { 
+  fetchHeartbeatStatus, 
+  triggerHeartbeatPing, 
+  formatRelativeTime, 
+  formatDateTime 
+} from '../lib/heartbeatService';
 
 const SAMPLE_LOG_LINE = '61590748374787 | dv4WaXTqmkR3 | OQVZ ZBN2 SEHY TINT SWPA RL66 SZZK 4RWU | BrandeeOats60@outlook.com | qvli4Ham3';
 
@@ -49,6 +55,11 @@ export default function AdminDashboard({ onShowToast }) {
   const [newBalanceInput, setNewBalanceInput] = useState('');
   const [editingProductId, setEditingProductId] = useState(null);
   const [newProductPrice, setNewProductPrice] = useState('');
+
+  // Heartbeat & Database Keep-Alive State
+  const [heartbeat, setHeartbeat] = useState(null);
+  const [loadingHeartbeat, setLoadingHeartbeat] = useState(true);
+  const [isPinging, setIsPinging] = useState(false);
 
   // Platforms Catalog State
   const [platforms, setPlatforms] = useState([]);
@@ -320,6 +331,7 @@ export default function AdminDashboard({ onShowToast }) {
       }
     }
     loadData();
+    loadHeartbeat();
 
     // Subscribe to live pricing updates
     const unsubscribe = subscribeToPricingUpdates((updatedList) => {
@@ -330,6 +342,37 @@ export default function AdminDashboard({ onShowToast }) {
       if (unsubscribe) unsubscribe();
     };
   }, []);
+
+  const loadHeartbeat = async () => {
+    setLoadingHeartbeat(true);
+    try {
+      const res = await fetchHeartbeatStatus();
+      if (res.success) {
+        setHeartbeat(res);
+      }
+    } catch (e) {
+      console.warn('Error loading heartbeat:', e);
+    } finally {
+      setLoadingHeartbeat(false);
+    }
+  };
+
+  const handleTriggerManualPing = async () => {
+    setIsPinging(true);
+    try {
+      const result = await triggerHeartbeatPing('admin_dashboard_manual');
+      if (result.success) {
+        toast(`⚡ Keep-alive ping successful! Counter: ${result.pingCount} (${result.durationMs}ms)`);
+        await loadHeartbeat();
+      } else {
+        toast(`⚠️ Ping notice: ${result.error || 'Failed to ping'}`);
+      }
+    } catch (err) {
+      toast(`❌ Ping error: ${err.message}`);
+    } finally {
+      setIsPinging(false);
+    }
+  };
 
   const toast = (msg) => {
     if (onShowToast) onShowToast(msg);
@@ -463,18 +506,30 @@ export default function AdminDashboard({ onShowToast }) {
         }
       });
 
-      setSyncResult(res);
-      toast(`🎉 Successfully uploaded ${res.successCount} account logs to Appwrite ${activePlatformConfig.name}!`);
+      if (res && res.successCount > 0) {
+        setSyncResult(res);
+        toast(`🎉 Successfully uploaded ${res.successCount} account logs to Appwrite ${activePlatformConfig.name}!`);
 
-      // Filter out uploaded records from board, keep invalid ones for fixing
-      const remainingInvalid = parsedRows.filter(r => !r.isValid);
-      if (remainingInvalid.length > 0) {
-        setParsedRows(remainingInvalid);
-        setRawLogsInput(remainingInvalid.map(r => r.raw).join('\n'));
+        // Refresh platforms catalog and notify marketplace
+        await loadPlatforms();
+        window.dispatchEvent(new CustomEvent('inventory-updated', { detail: { platformId: targetPlatform } }));
+
+        // Filter out uploaded records from board, keep invalid ones for fixing
+        const remainingInvalid = parsedRows.filter(r => !r.isValid);
+        if (remainingInvalid.length > 0) {
+          setParsedRows(remainingInvalid);
+          setRawLogsInput(remainingInvalid.map(r => r.raw).join('\n'));
+        } else {
+          setRawLogsInput('');
+          setParsedRows([]);
+          setHasParsed(false);
+        }
       } else {
-        setRawLogsInput('');
-        setParsedRows([]);
-        setHasParsed(false);
+        const errorDetails = res?.errors?.length > 0 
+          ? res.errors.map(e => `${e.username}: ${e.error}`).join('; ')
+          : 'Appwrite rejected the upload batch. Please verify logs format.';
+        toast(`❌ Upload failed: ${errorDetails}`);
+        setSyncResult(res);
       }
     } catch (err) {
       console.error('Sync failed:', err);
@@ -838,6 +893,67 @@ export default function AdminDashboard({ onShowToast }) {
           <span className="dash-metric-label">Registered Users</span>
           <span className="dash-metric-val text-green">{users.length}</span>
           <span className="dash-metric-sub">User Balance Profiles</span>
+        </div>
+      </div>
+
+      {/* Appwrite Cloud Database Keep-Alive & Anti-Pause Guardian Banner */}
+      <div className="db-keepalive-banner">
+        <div className="db-keepalive-header">
+          <div className="db-keepalive-title-group">
+            <h3>⚡ Appwrite Database Keep-Alive Guardian</h3>
+            <span className="db-keepalive-pulse">
+              <span className="pulse-dot"></span>
+              {heartbeat?.status === 'healthy' ? 'Active & Auto-Protected' : 'Checking Status...'}
+            </span>
+          </div>
+          <button 
+            type="button" 
+            className="btn-keepalive-ping" 
+            onClick={handleTriggerManualPing}
+            disabled={isPinging}
+          >
+            {isPinging ? '⚡ Pinging Appwrite DB...' : '⚡ Trigger Keep-Alive Ping Now'}
+          </button>
+        </div>
+
+        <div className="db-keepalive-metrics-row">
+          <div className="db-keepalive-stat">
+            <span className="db-keepalive-stat-label">Last Ping Timestamp</span>
+            <span className="db-keepalive-stat-val text-cyan">
+              {loadingHeartbeat ? 'Loading...' : (formatRelativeTime(heartbeat?.lastPing) || 'Just now')}
+            </span>
+            <span className="db-keepalive-stat-sub">
+              {heartbeat?.lastPing ? formatDateTime(heartbeat.lastPing) : 'Synchronizing with Appwrite...'}
+            </span>
+          </div>
+
+          <div className="db-keepalive-stat">
+            <span className="db-keepalive-stat-label">Total Keep-Alive Pings</span>
+            <span className="db-keepalive-stat-val text-green">
+              {loadingHeartbeat ? '...' : `${heartbeat?.pingCount || 0} Successful Pings`}
+            </span>
+            <span className="db-keepalive-stat-sub">Auto-incrementing heartbeat counter</span>
+          </div>
+
+          <div className="db-keepalive-stat">
+            <span className="db-keepalive-stat-label">Automated Cron Schedule</span>
+            <span className="db-keepalive-stat-val">0 4 * * * (Daily 04:00 UTC)</span>
+            <span className="db-keepalive-stat-sub">+ External GitHub Actions (05:15 UTC)</span>
+          </div>
+
+          <div className="db-keepalive-stat">
+            <span className="db-keepalive-stat-label">Latest Activity Source</span>
+            <span className="db-keepalive-stat-val" style={{ color: '#fbbf24' }}>
+              {heartbeat?.source || 'appwrite_cron'}
+            </span>
+            <span className="db-keepalive-stat-sub">Collection: system_heartbeat</span>
+          </div>
+        </div>
+
+        <div className="db-keepalive-actions">
+          <p className="db-keepalive-desc">
+            🛡️ <strong>Anti-Dormancy Protection Active:</strong> Appwrite Cloud automatically pauses projects after 3+ days of inactivity. This system performs daily database mutations via Appwrite Cloud Function Cron and GitHub Actions external HTTPS requests to guarantee 100% database uptime with zero manual intervention.
+          </p>
         </div>
       </div>
 

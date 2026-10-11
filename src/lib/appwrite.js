@@ -17,7 +17,8 @@ export const APPWRITE_CONFIG = {
     textplus: '6ab9707300032f996f8c',
     products_pricing: 'products_pricing',
     user_profiles: 'user_profiles',
-    orders: 'orders'
+    orders: 'orders',
+    system_heartbeat: 'system_heartbeat'
   },
   functionId: 'log-dispenser'
 };

@@ -4,8 +4,8 @@
 // and 30-day credential retention lifecycle.
 // ==========================================================================
 
-import { siteConfig } from '../data/siteConfig';
-import { fetchAvailableAccountLogs } from './appwriteDispenser';
+import { siteConfig } from '../data/siteConfig.js';
+import { fetchAvailableAccountLogs } from './appwriteDispenser.js';
 
 export {
   getPurchasedLogs,
@@ -56,7 +56,7 @@ export function markUsernameClaimed(username) {
 export function exportCredentialsAsText(cred) {
   const purchasedDate = cred.purchasedAt ? new Date(cred.purchasedAt).toLocaleString() : new Date().toLocaleString();
   const has2FA = Boolean(cred.twoFactorKey && cred.twoFactorKey !== 'N/A');
-  const hasMail = Boolean(cred.mail && cred.mail !== 'N/A' && cred.mail !== cred.username);
+  const hasMail = Boolean(cred.mail && cred.mail !== 'N/A');
   const hasMailPass = Boolean(cred.mailPassword && cred.mailPassword !== 'N/A');
 
   let credLines = [
@@ -82,25 +82,22 @@ export function exportCredentialsAsText(cred) {
   // Check for rules / description
   const rulesContent = cred.rulesNotes || cred.rules || extraFieldsObj?.rules || extraFieldsObj?.rules_notes || extraFieldsObj?.notes || cred.description || '';
   const rulesSection = rulesContent.trim() ? `
-=======================================================
+-------------------------------------------------------
 RULES, ACCOUNT DESCRIPTION & USAGE GUIDELINES:
-=======================================================
+-------------------------------------------------------
 ${rulesContent.trim()}
 ` : '';
 
   const twoFaInstructions = has2FA ? `
-=======================================================
+-------------------------------------------------------
 INSTRUCTIONS FOR 2FA AUTHENTICATION:
 1. Open any authenticator app or visit https://2fa.live
 2. Paste the 2FA Secret Key into the generator
 3. Copy the 6-digit dynamic code to log in.` : '';
 
-  // Real delimiter line (custom format) or fallback
-  const rawLineCombo = cred.rawRecord || cred.comboString || `${cred.username}:${cred.password}${hasMail ? `:${cred.mail}` : ''}${hasMailPass ? `:${cred.mailPassword}` : ''}${has2FA ? `:${cred.twoFactorKey}` : ''}`;
-
-  return `=======================================================
+  return `-------------------------------------------------------
 CHRIS SHOPPER — OFFICIAL ACCOUNT LOG DELIVERY
-=======================================================
+-------------------------------------------------------
 Service / Platform : ${cred.platform || 'Account Log'}
 Order ID           : ${cred.id || 'N/A'}
 Purchased Date     : ${purchasedDate}
@@ -110,13 +107,10 @@ Retention Notice   : This account log is stored in your history
 
 ----------------- ACCOUNT CREDENTIALS -----------------
 ${credLines.join('\n')}
-
------------------ RAW COMBO / DELIMITER FORMAT --------
-${rawLineCombo}
 ${rulesSection}${twoFaInstructions}
-=======================================================
+-------------------------------------------------------
 For technical support, message us on WhatsApp: ${siteConfig?.whatsappNumber || '+2349135560229'}
-=======================================================`;
+-------------------------------------------------------`;
 }
 
 /**
@@ -147,17 +141,17 @@ export function downloadCredentialsFile(cred) {
  */
 export function exportBulkCredentialsAsText(credentialsList) {
   let fileLines = [
-    '=======================================================',
+    '-------------------------------------------------------',
     'CHRIS SHOPPER — OFFICIAL BULK ACCOUNT LOGS DELIVERY',
-    '=======================================================',
+    '-------------------------------------------------------',
     `Total Accounts Purchased : ${credentialsList.length}`,
     `Delivery Timestamp       : ${new Date().toLocaleString()}`,
-    '=======================================================',
+    '-------------------------------------------------------',
     '30-DAY RETENTION POLICY NOTICE:',
     'Purchased account logs are securely retained in your',
     'Chris Shopper Purchase History for 30 days, after which',
     'they are permanently purged. Save this file for your records.',
-    '=======================================================',
+    '-------------------------------------------------------',
     ''
   ];
 
@@ -165,9 +159,9 @@ export function exportBulkCredentialsAsText(credentialsList) {
     fileLines.push(`[ACCOUNT #${idx + 1}: ${cred.platform || 'Account Log'}]`);
     fileLines.push(`Username / UID     : ${cred.username}`);
     fileLines.push(`Password           : ${cred.password}`);
-    if (cred.twoFactorKey) fileLines.push(`2FA Secret Key     : ${cred.twoFactorKey}`);
-    if (cred.mail) fileLines.push(`Email Address      : ${cred.mail}`);
-    if (cred.mailPassword) fileLines.push(`Email Password     : ${cred.mailPassword}`);
+    if (cred.twoFactorKey && cred.twoFactorKey !== 'N/A') fileLines.push(`2FA Secret Key     : ${cred.twoFactorKey}`);
+    if (cred.mail && cred.mail !== 'N/A') fileLines.push(`Email Address      : ${cred.mail}`);
+    if (cred.mailPassword && cred.mailPassword !== 'N/A') fileLines.push(`Email Password     : ${cred.mailPassword}`);
 
     const extraFieldsObj = cred.extraData || (cred.custom_data ? (typeof cred.custom_data === 'string' ? JSON.parse(cred.custom_data) : cred.custom_data) : null);
     if (extraFieldsObj && typeof extraFieldsObj === 'object') {
@@ -185,8 +179,6 @@ export function exportBulkCredentialsAsText(credentialsList) {
       fileLines.push(`Rules / Notes      : ${rulesContent.trim()}`);
     }
 
-    const rawLine = cred.rawRecord || cred.comboString || `${cred.username}:${cred.password}`;
-    fileLines.push(`Raw Combo Format   : ${rawLine}`);
     fileLines.push('-------------------------------------------------------');
   });
 

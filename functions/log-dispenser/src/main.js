@@ -9,7 +9,8 @@ const COLLECTIONS = {
   platforms_catalog: 'platforms_catalog',
   products_pricing: 'products_pricing',
   user_profiles: 'user_profiles',
-  orders: 'orders'
+  orders: 'orders',
+  system_heartbeat: 'system_heartbeat'
 };
 
 const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || '6ab96f3c0031c3231183';
@@ -51,7 +52,68 @@ export default async ({ req, res, log, error }) => {
   }
 
   const { action, platformId, subTypeId, username, userId, userEmail, price, records } = data;
-  log(`Executing log-dispenser action: ${action} for platform: ${platformId || 'N/A'}`);
+  log(`Executing log-dispenser action: ${action || '(none/schedule)'} for platform: ${platformId || 'N/A'}`);
+
+  // ACTION 0: DATABASE KEEP-ALIVE & HEARTBEAT PING (CRON OR DIRECT INVOCATION)
+  // Writes and increments heartbeat records to reset Appwrite Cloud inactivity pause timer.
+  const isScheduled = req.headers && req.headers['x-appwrite-trigger'] === 'schedule';
+  if (action === 'ping' || action === 'keep_alive' || isScheduled || !action) {
+    const pingSource = isScheduled 
+      ? 'appwrite_cron' 
+      : (data.source || (action ? 'direct_call' : 'empty_trigger'));
+    const nowIso = new Date().toISOString();
+    const HEARTBEAT_DOC_ID = 'appwrite_keepalive_heartbeat';
+
+    log(`[Heartbeat] Executing database keep-alive ping (Source: ${pingSource})...`);
+
+    try {
+      let existingDoc = null;
+      try {
+        existingDoc = await databases.getDocument(DATABASE_ID, 'system_heartbeat', HEARTBEAT_DOC_ID);
+      } catch (getErr) {
+        if (getErr.code !== 404 && getErr.type !== 'document_not_found') {
+          throw getErr;
+        }
+      }
+
+      const nextCount = existingDoc ? (Number(existingDoc.ping_count || 0) + 1) : 1;
+      const payload = {
+        last_ping: nowIso,
+        ping_count: nextCount,
+        source: pingSource,
+        status: 'healthy',
+        metadata: JSON.stringify({
+          executedAt: nowIso,
+          trigger: req.headers ? req.headers['x-appwrite-trigger'] : 'unknown',
+          uptime: process.uptime()
+        })
+      };
+
+      let updatedDoc;
+      if (existingDoc) {
+        updatedDoc = await databases.updateDocument(DATABASE_ID, 'system_heartbeat', HEARTBEAT_DOC_ID, payload);
+      } else {
+        updatedDoc = await databases.createDocument(DATABASE_ID, 'system_heartbeat', HEARTBEAT_DOC_ID, payload);
+      }
+
+      log(`[Heartbeat] Success! Ping #${nextCount} recorded at ${nowIso}`);
+
+      return res.json({
+        success: true,
+        message: 'Appwrite Cloud database keep-alive ping successfully recorded',
+        lastPing: nowIso,
+        pingCount: nextCount,
+        source: pingSource,
+        status: 'healthy'
+      });
+    } catch (dbErr) {
+      error(`[Heartbeat] Database ping failed: ${dbErr.message}`);
+      return res.json({
+        success: false,
+        error: `Database keep-alive ping failed: ${dbErr.message}`
+      }, 500);
+    }
+  }
 
   // ACTION 1: LIST AVAILABLE (SANITIZED BROWSING)
   if (action === 'list_available') {
@@ -77,6 +139,9 @@ export default async ({ req, res, log, error }) => {
         subTypeTitle: doc.sub_type_title,
         price: doc.price || 1500,
         status: doc.status,
+        rawRecord: doc.raw_record || '',
+        rulesNotes: doc.rules_notes || '',
+        customData: doc.custom_data || '',
         isAvailable: doc.status === 'available'
       }));
 

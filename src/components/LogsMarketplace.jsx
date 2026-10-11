@@ -131,8 +131,16 @@ export default function LogsMarketplace({
       loadInventory();
     };
 
+    const handleInventoryUpdated = () => {
+      loadInventory();
+    };
+
     window.addEventListener('platforms-updated', handlePlatformsUpdated);
-    return () => window.removeEventListener('platforms-updated', handlePlatformsUpdated);
+    window.addEventListener('inventory-updated', handleInventoryUpdated);
+    return () => {
+      window.removeEventListener('platforms-updated', handlePlatformsUpdated);
+      window.removeEventListener('inventory-updated', handleInventoryUpdated);
+    };
   }, []);
 
   const toast = (msg) => {
@@ -1016,6 +1024,57 @@ export default function LogsMarketplace({
                 </div>
               )}
 
+              {/* Dynamic Delimiter Fields (Phone, PIN, Token, Security Question, etc.) */}
+              {(() => {
+                const cred = deliveryModal.credential;
+                let extra = cred.extraData;
+                if (!extra && cred.custom_data) {
+                  try {
+                    extra = typeof cred.custom_data === 'string' ? JSON.parse(cred.custom_data) : cred.custom_data;
+                  } catch {}
+                }
+                if (!extra || typeof extra !== 'object') return null;
+                const standardKeys = ['username', 'password', 'twoFactorKey', 'two_factor_key', 'mail', 'mailPassword', 'mail_password', 'rules', 'rulesNotes', 'rules_notes'];
+                const customEntries = Object.entries(extra).filter(([k, v]) => !standardKeys.includes(k) && v);
+                if (customEntries.length === 0) return null;
+                return customEntries.map(([k, v]) => {
+                  const label = k.replace(/^custom_/, '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                  return (
+                    <div key={k} className="credential-field-row">
+                      <span className="cred-label">{label}:</span>
+                      <div className="cred-val-wrap">
+                        <span className="cred-val-mono">{v}</span>
+                        <button
+                          type="button"
+                          className={`btn-mini-copy ${deliveryModal.copiedField === k ? 'copied' : ''}`}
+                          onClick={() => handleCopy(v, label)}
+                        >
+                          {deliveryModal.copiedField === k ? '✓ Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+
+              {/* Account Rules & Usage Guidelines */}
+              {(() => {
+                const cred = deliveryModal.credential;
+                const rules = cred.rulesNotes || cred.rules || '';
+                if (!rules.trim()) return null;
+                return (
+                  <div style={{ marginTop: '12px', padding: '12px', background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px' }}>
+                    <div style={{ color: '#38bdf8', fontWeight: '700', fontSize: '0.8rem', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📜</span>
+                      <span>Account Rules &amp; Guidelines:</span>
+                    </div>
+                    <div style={{ color: '#e2e8f0', fontSize: '0.82rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>
+                      {rules.trim()}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Combo String */}
               <div className="combo-string-box">
                 <div className="combo-string-label">Full Credentials Line / Combo:</div>
@@ -1025,7 +1084,7 @@ export default function LogsMarketplace({
               {/* Rules and Guidelines Notice */}
               <div style={{ marginTop: '10px', fontSize: '0.8rem', color: '#94a3b8', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span>💡</span>
-                <span>Account rules, proxies, and usage descriptions are fully detailed inside your downloaded <code>.txt</code> file.</span>
+                <span>Account rules and credentials are also formatted in your downloaded <code>.txt</code> file.</span>
               </div>
             </div>
 

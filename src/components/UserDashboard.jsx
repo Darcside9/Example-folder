@@ -1112,32 +1112,81 @@ export default function UserDashboard({ user, onSignOut }) {
                                 ) : '-'}
                               </td>
                               <td className="font-mono" style={{ fontSize: '0.78rem' }}>
-                                {log.mail ? (
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {log.mail}
-                                      </span>
-                                      <button 
-                                        className="btn-cell-copy"
-                                        onClick={() => copyToClipboard(log.mail, 'Email')}
-                                      >
-                                        Copy
-                                      </button>
-                                    </div>
-                                    {log.mailPassword && (
-                                      <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span>Pass: {isPwRevealed ? log.mailPassword : '••••••'}</span>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  {log.mail && (
+                                    <>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                          {log.mail}
+                                        </span>
                                         <button 
                                           className="btn-cell-copy"
-                                          onClick={() => copyToClipboard(log.mailPassword, 'Mail Pass')}
+                                          onClick={() => copyToClipboard(log.mail, 'Email')}
                                         >
                                           Copy
                                         </button>
                                       </div>
-                                    )}
-                                  </div>
-                                ) : '-'}
+                                      {log.mailPassword && (
+                                        <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span>Pass: {isPwRevealed ? log.mailPassword : '••••••'}</span>
+                                          <button 
+                                            className="btn-cell-copy"
+                                            onClick={() => copyToClipboard(log.mailPassword, 'Mail Pass')}
+                                          >
+                                            Copy
+                                          </button>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+
+                                  {/* Custom Delimiter Fields */}
+                                  {(() => {
+                                    let extra = log.extraData;
+                                    if (!extra && log.custom_data) {
+                                      try {
+                                        extra = typeof log.custom_data === 'string' ? JSON.parse(log.custom_data) : log.custom_data;
+                                      } catch {}
+                                    }
+                                    if (!extra || typeof extra !== 'object') return null;
+                                    const standardKeys = ['username', 'password', 'twoFactorKey', 'two_factor_key', 'mail', 'mailPassword', 'mail_password', 'rules', 'rulesNotes', 'rules_notes'];
+                                    const customEntries = Object.entries(extra).filter(([k, v]) => !standardKeys.includes(k) && v);
+                                    if (customEntries.length === 0) return null;
+                                    return customEntries.map(([k, v]) => {
+                                      const label = k.replace(/^custom_/, '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+                                      return (
+                                        <div key={k} style={{ color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                          <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {label}: {isPwRevealed ? v : '••••••'}
+                                          </span>
+                                          <button 
+                                            className="btn-cell-copy"
+                                            onClick={() => copyToClipboard(v, label)}
+                                          >
+                                            Copy
+                                          </button>
+                                        </div>
+                                      );
+                                    });
+                                  })()}
+
+                                  {/* Rules and Guidelines Button */}
+                                  {(log.rulesNotes || log.rules) && (
+                                    <button
+                                      type="button"
+                                      className="btn-simulate-tiny"
+                                      style={{ alignSelf: 'flex-start', marginTop: '2px', fontSize: '0.72rem', color: '#fbbf24', borderColor: 'rgba(251, 191, 36, 0.4)' }}
+                                      onClick={() => alert(`Rules & Guidelines for @${log.username}:\n\n${log.rulesNotes || log.rules}`)}
+                                      title="View Account Usage Rules & Guidelines"
+                                    >
+                                      📜 View Rules
+                                    </button>
+                                  )}
+
+                                  {!log.mail && !log.rulesNotes && !log.rules && (!log.extraData || Object.keys(log.extraData).length === 0) && (
+                                    <span>-</span>
+                                  )}
+                                </div>
                               </td>
                               <td className="font-mono font-bold" style={{ color: '#4ade80' }}>
                                 {siteConfig.formatNaira(log.price !== undefined ? log.price : 1500)}

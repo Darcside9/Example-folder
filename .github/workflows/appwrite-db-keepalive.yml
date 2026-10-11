@@ -1,0 +1,34 @@
+name: Appwrite DB Daily Keep-Alive & Auto-Pause Prevention
+
+on:
+  schedule:
+    # Runs daily at 05:15 UTC to keep Appwrite Cloud project and database active
+    - cron: '15 5 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  keepalive-ping:
+    name: Ping Appwrite Database
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install --no-audit --prefer-offline
+
+      - name: Execute Daily Keep-Alive Heartbeat Ping
+        env:
+          VITE_APPWRITE_ENDPOINT: ${{ secrets.VITE_APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1' }}
+          VITE_APPWRITE_PROJECT_ID: ${{ secrets.VITE_APPWRITE_PROJECT_ID || '6ab96624002e549083d1' }}
+          VITE_APPWRITE_DATABASE_ID: ${{ secrets.VITE_APPWRITE_DATABASE_ID || '6ab96f3c0031c3231183' }}
+          APPWRITE_API_KEY: ${{ secrets.APPWRITE_API_KEY }}
+        run: node scripts/ping_database.js github_actions

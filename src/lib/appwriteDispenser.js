@@ -291,7 +291,8 @@ export async function fetchAvailableAccountLogs(platformId = null) {
           JSON.stringify({
             action: 'list_available',
             platformId: cat.id
-          })
+          }),
+          false
         );
 
         if (execution && execution.responseBody) {
@@ -433,7 +434,8 @@ export async function dispenseSpecificAccountLog({
         userEmail,
         currentBalance: Number(currentBalance || 0),
         price: requiredPrice
-      })
+      }),
+      false
     );
 
     if (execution && execution.responseBody) {
@@ -842,7 +844,8 @@ export async function adminBulkImportLogs({
         subTypeTitle,
         price,
         records
-      })
+      }),
+      false
     );
 
     if (execution && execution.responseBody) {

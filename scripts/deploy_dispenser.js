@@ -61,6 +61,20 @@ async function deploy() {
     }
   }
 
+  // Ensure function schedule is set to 0 4 * * * (Daily at 04:00 UTC)
+  console.log('Ensuring function schedule is set to "0 4 * * *" (daily at 04:00 UTC)...');
+  try {
+    await functions.update({
+      functionId,
+      name,
+      execute: ['any'],
+      schedule: '0 4 * * *'
+    });
+    console.log('Function schedule configured to "0 4 * * *" successfully!');
+  } catch (sErr) {
+    console.warn('Schedule update note:', sErr.message);
+  }
+
   // Set environment variables on the function
   console.log('Configuring function environment variables...');
   const varsToSet = {
