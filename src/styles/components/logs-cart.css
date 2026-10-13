@@ -57,6 +57,110 @@
   margin-left: 2px;
 }
 
+/* Floating Cart Button (Fixed directly above the WhatsApp floating button) */
+.logs-floating-cart-btn {
+  position: fixed;
+  bottom: 92px; /* 24px bottom + 56px WhatsApp button + 12px gap = 92px */
+  right: 24px;
+  height: 56px;
+  min-width: 56px;
+  padding: 0 16px;
+  background: linear-gradient(135deg, #090d16 0%, #0f172a 100%);
+  border: 1.5px solid rgba(56, 189, 248, 0.45);
+  color: #38bdf8;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 18px rgba(56, 189, 248, 0.22);
+  z-index: 1000;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.logs-floating-cart-btn:hover {
+  transform: translateY(-3px) scale(1.05);
+  border-color: #38bdf8;
+  background: linear-gradient(135deg, #0d1527 0%, #172554 100%);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.75), 0 0 26px rgba(56, 189, 248, 0.4);
+}
+
+.logs-floating-cart-btn.has-items {
+  border-color: #38bdf8;
+  background: linear-gradient(135deg, #091a2f 0%, #0c2847 100%);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 20px rgba(56, 189, 248, 0.35);
+  animation: floatingCartPulse 3s infinite ease-in-out;
+}
+
+@keyframes floatingCartPulse {
+  0%, 100% {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 16px rgba(56, 189, 248, 0.25);
+  }
+  50% {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65), 0 0 28px rgba(56, 189, 248, 0.5);
+  }
+}
+
+.floating-cart-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.floating-cart-badge {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  background: #38bdf8;
+  color: #020617;
+  font-size: 0.72rem;
+  font-weight: 800;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 9999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  border: 2px solid #090d16;
+  line-height: 1;
+}
+
+.floating-cart-pill-price {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.86rem;
+  font-weight: 800;
+  color: #4ade80;
+  white-space: nowrap;
+}
+
+.floating-cart-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #f1f5f9;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 768px) {
+  .mtel-floating-support-btn {
+    bottom: 18px !important;
+    right: 18px !important;
+    width: 50px !important;
+    height: 50px !important;
+  }
+  .logs-floating-cart-btn {
+    bottom: 80px !important;
+    right: 18px !important;
+    height: 50px !important;
+    min-width: 50px !important;
+    padding: 0 12px;
+  }
+}
+
 /* Cart Overlay & Drawer Box */
 .logs-cart-overlay {
   position: fixed;

@@ -5,13 +5,15 @@
 // ==========================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { 
   fetchAvailableAccountLogs, 
   dispenseSpecificAccountLog,
   bulkDispenseAccountLogs,
   downloadCredentialsFile,
-  downloadBulkCredentialsFile
+  downloadBulkCredentialsFile,
+  isUsernameHiddenCategory
 } from '../lib/logsService';
 import { useAuth } from '../lib/AuthContext';
 import { siteConfig } from '../data/siteConfig';
@@ -209,6 +211,16 @@ export default function LogsMarketplace({
     });
   };
 
+  const handleQuantityChange = (targetQty, maxStock, availableAccounts) => {
+    const validQty = Math.max(1, Math.min(targetQty, maxStock));
+    const availableOnly = (availableAccounts || []).filter(a => a.isAvailable !== false);
+    const targetUsernames = availableOnly.slice(0, validQty).map(a => a.username);
+    setAccountSelectModal(prev => ({
+      ...prev,
+      selectedUsernames: targetUsernames
+    }));
+  };
+
   // Confirm Purchase of the Selected Username(s) directly
   const handleConfirmAccountPurchase = async () => {
     const selectedCount = accountSelectModal.selectedUsernames.length;
@@ -317,12 +329,18 @@ export default function LogsMarketplace({
 
     const targetCategory = accountSelectModal.category;
     const targetSubType = accountSelectModal.subType;
+    const isHidden = isUsernameHiddenCategory(targetCategory?.id, targetCategory?.name);
 
     const items = accountSelectModal.selectedUsernames.map(username => {
       const acc = (targetSubType.accounts || []).find(a => a.username === username);
+      const displayLabel = isHidden 
+        ? 'Verified Account Log' 
+        : `@${username}`;
+
       return {
         id: `${targetCategory.id}_${username}`,
         username,
+        displayLabel,
         platformId: targetCategory.id,
         platform: targetCategory.name,
         subTypeId: targetSubType.id,
@@ -373,7 +391,7 @@ export default function LogsMarketplace({
     if (!accountSelectModal.subType) return [];
     const accounts = accountSelectModal.subType.accounts || [];
     if (!accountSelectModal.searchFilter.trim()) return accounts;
-    const filter = accountSelectModal.searchFilter.toLowerCase();
+    const filter = accountSelectModal.searchFilter.toLowerCase().trim();
     return accounts.filter(acc => acc.username.toLowerCase().includes(filter));
   }, [accountSelectModal.subType, accountSelectModal.searchFilter]);
 
@@ -609,6 +627,7 @@ export default function LogsMarketplace({
                                   ? item.stockCount 
                                   : (item.accounts || []).filter(a => a.isAvailable !== false).length;
                                 const isSoldOut = itemStock === 0;
+                                const isHiddenCategory = isUsernameHiddenCategory(cat.id, cat.name);
 
                                 return (
                                   <div 
@@ -623,7 +642,10 @@ export default function LogsMarketplace({
                                         handleOpenAccountSelect(cat, item);
                                       }
                                     }}
-                                    title={isSoldOut ? `${cat.name} configuration is currently sold out` : `Click to view and select available ${cat.name} usernames`}
+                                    title={isSoldOut 
+                                      ? `${cat.name} configuration is currently sold out` 
+                                      : `Click to view and select available ${cat.name} usernames`
+                                    }
                                   >
                                     {/* Top / Left Section: Icon & Full Description */}
                                     <div className="accszone-item-main">
@@ -695,7 +717,9 @@ export default function LogsMarketplace({
                   size={44} 
                 />
                 <div>
-                  <h3 className="account-select-title">Choose Account Usernames</h3>
+                  <h3 className="account-select-title">
+                    Choose Account Usernames
+                  </h3>
                   <p className="account-select-subtitle">
                     {accountSelectModal.subType.title}
                   </p>
@@ -721,82 +745,182 @@ export default function LogsMarketplace({
               </span>
             </div>
 
-            {/* In-Modal Username Filter & Multi-Select Toolbar */}
-            <div className="account-select-search-wrap">
-              <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <circle cx="11" cy="11" r="8"/>
-                <path d="M21 21l-4.35-4.35"/>
-              </svg>
-              <input
-                type="text"
-                className="logs-search-input"
-                placeholder="Search usernames in this inventory batch..."
-                value={accountSelectModal.searchFilter}
-                onChange={(e) => setAccountSelectModal(prev => ({ ...prev, searchFilter: e.target.value }))}
-              />
-            </div>
-
-            {/* Multi-Select Toolbar */}
-            {modalAvailableUsernames.length > 0 && (
-              <div className="modal-selection-toolbar">
-                <span>
-                  {accountSelectModal.selectedUsernames.length} of {modalAvailableUsernames.length} available selected
-                </span>
-                <button
-                  type="button"
-                  className="btn-select-all"
-                  onClick={() => toggleSelectAll(modalAvailableUsernames)}
-                >
-                  {modalAvailableUsernames.every(u => accountSelectModal.selectedUsernames.includes(u)) 
-                    ? 'Deselect All' 
-                    : 'Select All Available'
-                  }
-                </button>
-              </div>
-            )}
-
-            {/* Username Selection List */}
-            <div className="account-select-list">
-              {modalAvailableAccounts.length === 0 ? (
-                <div className="account-select-empty">
-                  No accounts found matching "{accountSelectModal.searchFilter}".
-                </div>
-              ) : (
-                modalAvailableAccounts.map((acc, aIdx) => {
-                  const isSelected = accountSelectModal.selectedUsernames.includes(acc.username);
-                  const isAvailable = acc.isAvailable !== false;
-
-                  return (
-                    <div
-                      key={acc.id || acc.username || aIdx}
-                      className={`account-select-item ${isSelected ? 'selected' : ''} ${!isAvailable ? 'disabled' : ''}`}
-                      onClick={() => isAvailable && toggleSelectUsername(acc.username)}
-                    >
-                      <div className="acc-item-left">
-                        {/* Multi-select checkbox */}
-                        <div className={`acc-checkbox-square ${isSelected ? 'checked' : ''}`}>
-                          {isSelected ? '✓' : ''}
-                        </div>
-                        <div className="acc-avatar-circle">
-                          👤
-                        </div>
-                        <div className="acc-info-col">
-                          <span className="acc-username-text">@{acc.username}</span>
-                          <span className="acc-platform-sub">{acc.platform || accountSelectModal.category?.name} PVA Account Log</span>
-                        </div>
-                      </div>
-
-                      <div className="acc-item-right">
-                        <span className={`stock-status-tag ${isAvailable ? 'tag-available' : 'tag-sold'}`}>
-                          <span className="status-dot" />
-                          {isAvailable ? 'In Stock' : 'Sold'}
-                        </span>
+            {/* Modal Body: Hidden Category Quantity Mode vs Username Selection Mode */}
+            {isUsernameHiddenCategory(accountSelectModal.category?.id, accountSelectModal.category?.name) ? (
+              <div className="account-hidden-qty-box">
+                <div className="hidden-qty-stock-banner">
+                  <div className="stock-banner-left">
+                    <span className="stock-pulse-indicator" />
+                    <div>
+                      <div className="stock-banner-title">Available Inventory</div>
+                      <div className="stock-banner-subtitle">
+                        {modalAvailableUsernames.length} account{modalAvailableUsernames.length === 1 ? '' : 's'} ready for instant delivery
                       </div>
                     </div>
-                  );
-                })
-              )}
-            </div>
+                  </div>
+                  <div className="stock-banner-price font-mono">
+                    {siteConfig.formatNaira(
+                      accountSelectModal.subType?.price !== undefined 
+                        ? accountSelectModal.subType.price 
+                        : (accountSelectModal.category?.demoPrice || 1500)
+                    )} <span className="unit-label">/ account</span>
+                  </div>
+                </div>
+
+                {modalAvailableUsernames.length === 0 ? (
+                  <div className="account-select-empty">
+                    This configuration is currently sold out. Please check back later.
+                  </div>
+                ) : (
+                  <div className="hidden-qty-controls-card">
+                    <div className="qty-picker-label">Quick Quantity Selector:</div>
+                    <div className="qty-stepper-row">
+                      <div className="qty-stepper-wrap">
+                        <button
+                          type="button"
+                          className="qty-step-btn"
+                          disabled={accountSelectModal.loading || accountSelectModal.selectedUsernames.length <= 1}
+                          onClick={() => handleQuantityChange(accountSelectModal.selectedUsernames.length - 1, modalAvailableUsernames.length, modalAvailableAccounts)}
+                          aria-label="Decrease quantity"
+                        >
+                          −
+                        </button>
+                        <span className="qty-step-value font-mono">
+                          {accountSelectModal.selectedUsernames.length}
+                        </span>
+                        <button
+                          type="button"
+                          className="qty-step-btn"
+                          disabled={accountSelectModal.loading || accountSelectModal.selectedUsernames.length >= modalAvailableUsernames.length}
+                          onClick={() => handleQuantityChange(accountSelectModal.selectedUsernames.length + 1, modalAvailableUsernames.length, modalAvailableAccounts)}
+                          aria-label="Increase quantity"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="qty-max-hint">Max: {modalAvailableUsernames.length}</span>
+                    </div>
+
+                    {/* Quick Pick Pills */}
+                    {modalAvailableUsernames.length > 1 && (
+                      <div className="qty-quick-pills">
+                        <button
+                          type="button"
+                          className={`qty-pill ${accountSelectModal.selectedUsernames.length === 1 ? 'active' : ''}`}
+                          onClick={() => handleQuantityChange(1, modalAvailableUsernames.length, modalAvailableAccounts)}
+                        >
+                          1 Log
+                        </button>
+                        {modalAvailableUsernames.length >= 2 && (
+                          <button
+                            type="button"
+                            className={`qty-pill ${accountSelectModal.selectedUsernames.length === 2 ? 'active' : ''}`}
+                            onClick={() => handleQuantityChange(2, modalAvailableUsernames.length, modalAvailableAccounts)}
+                          >
+                            2 Logs
+                          </button>
+                        )}
+                        {modalAvailableUsernames.length >= 5 && (
+                          <button
+                            type="button"
+                            className={`qty-pill ${accountSelectModal.selectedUsernames.length === 5 ? 'active' : ''}`}
+                            onClick={() => handleQuantityChange(5, modalAvailableUsernames.length, modalAvailableAccounts)}
+                          >
+                            5 Logs
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className={`qty-pill ${accountSelectModal.selectedUsernames.length === modalAvailableUsernames.length ? 'active' : ''}`}
+                          onClick={() => handleQuantityChange(modalAvailableUsernames.length, modalAvailableUsernames.length, modalAvailableAccounts)}
+                        >
+                          All ({modalAvailableUsernames.length})
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                {/* In-Modal Username Filter & Multi-Select Toolbar */}
+                <div className="account-select-search-wrap">
+                  <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <circle cx="11" cy="11" r="8"/>
+                    <path d="M21 21l-4.35-4.35"/>
+                  </svg>
+                  <input
+                    type="text"
+                    className="logs-search-input"
+                    placeholder="Search usernames in this inventory batch..."
+                    value={accountSelectModal.searchFilter}
+                    onChange={(e) => setAccountSelectModal(prev => ({ ...prev, searchFilter: e.target.value }))}
+                  />
+                </div>
+
+                {/* Multi-Select Toolbar */}
+                {modalAvailableUsernames.length > 0 && (
+                  <div className="modal-selection-toolbar">
+                    <span>
+                      {accountSelectModal.selectedUsernames.length} of {modalAvailableUsernames.length} available selected
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-select-all"
+                      onClick={() => toggleSelectAll(modalAvailableUsernames)}
+                    >
+                      {modalAvailableUsernames.every(u => accountSelectModal.selectedUsernames.includes(u)) 
+                        ? 'Deselect All' 
+                        : 'Select All Available'
+                      }
+                    </button>
+                  </div>
+                )}
+
+                {/* Username Selection List */}
+                <div className="account-select-list">
+                  {modalAvailableAccounts.length === 0 ? (
+                    <div className="account-select-empty">
+                      No accounts found matching "{accountSelectModal.searchFilter}".
+                    </div>
+                  ) : (
+                    modalAvailableAccounts.map((acc, aIdx) => {
+                      const isSelected = accountSelectModal.selectedUsernames.includes(acc.username);
+                      const isAvailable = acc.isAvailable !== false;
+
+                      return (
+                        <div
+                          key={acc.id || acc.username || aIdx}
+                          className={`account-select-item ${isSelected ? 'selected' : ''} ${!isAvailable ? 'disabled' : ''}`}
+                          onClick={() => isAvailable && toggleSelectUsername(acc.username)}
+                        >
+                          <div className="acc-item-left">
+                            {/* Multi-select checkbox */}
+                            <div className={`acc-checkbox-square ${isSelected ? 'checked' : ''}`}>
+                              {isSelected ? '✓' : ''}
+                            </div>
+                            <div className="acc-avatar-circle">
+                              👤
+                            </div>
+                            <div className="acc-info-col">
+                              <span className="acc-username-text">@{acc.username}</span>
+                              <span className="acc-platform-sub">{acc.platform || accountSelectModal.category?.name} PVA Account Log</span>
+                            </div>
+                          </div>
+
+                          <div className="acc-item-right">
+                            <span className={`stock-status-tag ${isAvailable ? 'tag-available' : 'tag-sold'}`}>
+                              <span className="stock-dot" />
+                              {isAvailable ? 'In Stock' : 'Sold'}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </>
+            )}
 
             {accountSelectModal.error && (
               <div className="p-3 bg-red-900/30 border border-red-500/40 rounded-lg text-red-300 text-sm mb-4" style={{ margin: '0 20px 10px' }}>
@@ -1230,6 +1354,40 @@ export default function LogsMarketplace({
           if (onPurchaseComplete) onPurchaseComplete(result.credentials);
         }}
       />
+
+      {/* =========================================================================
+          PERSISTENT FLOATING CART BUTTON (Directly above floating WhatsApp button)
+          Rendered via Portal to document.body to prevent containing-block trap
+          ========================================================================= */}
+      {typeof document !== 'undefined' && createPortal(
+        <button
+          type="button"
+          className={`logs-floating-cart-btn ${cart.length > 0 ? 'has-items' : ''}`}
+          onClick={() => setIsCartOpen(true)}
+          title={cart.length > 0 ? `View Cart (${cart.length} item${cart.length === 1 ? '' : 's'})` : 'View Shopping Cart'}
+          aria-label="View Shopping Cart"
+        >
+          <div className="floating-cart-icon-wrap">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1"></circle>
+              <circle cx="20" cy="21" r="1"></circle>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+            </svg>
+            {cart.length > 0 && (
+              <span className="floating-cart-badge">
+                {cart.length}
+              </span>
+            )}
+          </div>
+          <span className="floating-cart-label">Cart</span>
+          {cart.length > 0 && (
+            <span className="floating-cart-pill-price">
+              {siteConfig.formatNaira(cartTotal)}
+            </span>
+          )}
+        </button>,
+        document.body
+      )}
     </section>
   );
 }

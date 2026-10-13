@@ -6,7 +6,7 @@
 
 import React, { useState } from 'react';
 import { siteConfig } from '../data/siteConfig';
-import { bulkDispenseAccountLogs } from '../lib/logsService';
+import { bulkDispenseAccountLogs, isUsernameHiddenCategory } from '../lib/logsService';
 import BrandIcon from './BrandIcon';
 
 export default function LogsCartDrawer({
@@ -114,7 +114,12 @@ export default function LogsCartDrawer({
                 <div className="cart-item-left">
                   <BrandIcon iconKey={item.icon || item.platformId} name={item.platform || item.platformId} size={28} />
                   <div className="cart-item-info">
-                    <span className="cart-item-user">@{item.username}</span>
+                    <span className="cart-item-user">
+                      {isUsernameHiddenCategory(item.platformId, item.platform)
+                        ? 'Verified Account Log'
+                        : `@${item.username}`
+                      }
+                    </span>
                     <span className="cart-item-sub">
                       {item.title || `${item.platform} PVA Log`}
                     </span>
