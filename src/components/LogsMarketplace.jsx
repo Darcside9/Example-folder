@@ -504,6 +504,8 @@ export default function LogsMarketplace({
               ))}
             </div>
 
+            {/* SEARCH BAR DISABLED TEMPORARILY: Categories are concise so searching is not needed. Preserved for future restore. */}
+            {/*
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: '1 1 auto', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <div className="logs-search-wrapper" style={{ flex: '1 1 240px', maxWidth: '380px' }}>
                 <svg className="logs-search-icon" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -519,6 +521,7 @@ export default function LogsMarketplace({
                 />
               </div>
             </div>
+            */}
           </div>
 
           {/* AccsZone 2-Tier Catalog Container */}
