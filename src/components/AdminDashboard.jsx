@@ -18,6 +18,11 @@ import {
   deleteProductPackage,
   deletePlatform 
 } from '../lib/platformsService';
+import { 
+  adminFetchPlatformLogs, 
+  adminDeleteLog, 
+  adminBulkDeleteLogs 
+} from '../lib/inventoryService';
 import { PLATFORM_CATEGORIES } from '../data/sampleLogsData';
 import { siteConfig } from '../data/siteConfig';
 import BrandIcon from './BrandIcon';
@@ -46,8 +51,20 @@ const SAMPLE_LOG_LINE = '61590748374787 | dv4WaXTqmkR3 | OQVZ ZBN2 SEHY TINT SWP
 
 export default function AdminDashboard({ onShowToast }) {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('importer'); // 'importer' | 'platforms' | 'delimiters' | 'pricing' | 'users' | 'orders'
+  const [activeTab, setActiveTab] = useState('importer'); // 'importer' | 'database' | 'platforms' | 'delimiters' | 'pricing' | 'users' | 'orders'
   
+  // Inventory Database View State
+  const [inventoryLogs, setInventoryLogs] = useState([]);
+  const [loadingInventory, setLoadingInventory] = useState(false);
+  const [inventoryPlatform, setInventoryPlatform] = useState('all');
+  const [inventoryStatusTab, setInventoryStatusTab] = useState('available'); // 'available' | 'sold' | 'all'
+  const [inventorySubType, setInventorySubType] = useState('');
+  const [inventorySearch, setInventorySearch] = useState('');
+  const [selectedLogIds, setSelectedLogIds] = useState([]);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [revealedPasswords, setRevealedPasswords] = useState({});
+  const [logDetailsModal, setLogDetailsModal] = useState(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState(null);
   // Data States
   const [users, setUsers] = useState([]);
   const [pricingProducts, setPricingProducts] = useState([]);
@@ -376,6 +393,195 @@ export default function AdminDashboard({ onShowToast }) {
 
   const toast = (msg) => {
     if (onShowToast) onShowToast(msg);
+  };
+
+  // -------------------------------------------------------------------------
+  // INVENTORY DATABASE VIEW LOGIC & HANDLERS
+  // -------------------------------------------------------------------------
+  const loadInventoryLogs = async () => {
+    setLoadingInventory(true);
+    try {
+      const logs = await adminFetchPlatformLogs({
+        platformId: inventoryPlatform,
+        status: inventoryStatusTab,
+        subTypeId: inventorySubType
+      });
+      setInventoryLogs(logs || []);
+      setSelectedLogIds([]);
+    } catch (err) {
+      console.error('Error loading inventory logs:', err);
+      toast(`Error loading database logs: ${err.message}`);
+    } finally {
+      setLoadingInventory(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'database') {
+      loadInventoryLogs();
+    }
+  }, [activeTab, inventoryPlatform, inventoryStatusTab, inventorySubType]);
+
+  useEffect(() => {
+    const handleInventoryUpdated = () => {
+      if (activeTab === 'database') {
+        loadInventoryLogs();
+      }
+    };
+    window.addEventListener('inventory-updated', handleInventoryUpdated);
+    return () => window.removeEventListener('inventory-updated', handleInventoryUpdated);
+  }, [activeTab, inventoryPlatform, inventoryStatusTab, inventorySubType]);
+
+  // Packages available under current selected platform in inventory filter
+  const inventoryPlatformPackages = useMemo(() => {
+    if (!inventoryPlatform || inventoryPlatform === 'all') return [];
+    const list = platforms.length > 0 ? platforms : PLATFORM_CATEGORIES;
+    const plat = list.find(p => p.id === inventoryPlatform);
+    return plat?.items || [];
+  }, [platforms, inventoryPlatform]);
+
+  // Filtered displayed logs based on search input
+  const displayedInventoryLogs = useMemo(() => {
+    if (!inventorySearch.trim()) return inventoryLogs;
+    const q = inventorySearch.toLowerCase().trim();
+    return inventoryLogs.filter(item => {
+      return (
+        item.username?.toLowerCase().includes(q) ||
+        item.mail?.toLowerCase().includes(q) ||
+        item.soldToEmail?.toLowerCase().includes(q) ||
+        item.subTypeTitle?.toLowerCase().includes(q) ||
+        item.rawRecord?.toLowerCase().includes(q) ||
+        item.id?.toLowerCase().includes(q)
+      );
+    });
+  }, [inventoryLogs, inventorySearch]);
+
+  // Inventory stats summary
+  const inventoryStats = useMemo(() => {
+    const total = inventoryLogs.length;
+    const available = inventoryLogs.filter(l => l.status === 'available').length;
+    const sold = inventoryLogs.filter(l => l.status === 'sold').length;
+    return { total, available, sold };
+  }, [inventoryLogs]);
+
+  // Selection handlers
+  const handleToggleSelectAllLogs = () => {
+    if (selectedLogIds.length === displayedInventoryLogs.length && displayedInventoryLogs.length > 0) {
+      setSelectedLogIds([]);
+    } else {
+      setSelectedLogIds(displayedInventoryLogs.map(l => l.id));
+    }
+  };
+
+  const handleToggleSelectLog = (logId) => {
+    setSelectedLogIds(prev => 
+      prev.includes(logId) ? prev.filter(id => id !== logId) : [...prev, logId]
+    );
+  };
+
+  const togglePasswordReveal = (logId) => {
+    setRevealedPasswords(prev => ({ ...prev, [logId]: !prev[logId] }));
+  };
+
+  // Delete Request Handlers
+  const handleRequestDeleteSingle = (log) => {
+    setDeleteConfirmModal({
+      type: 'single',
+      log,
+      title: `Delete Log for ${log.username}`,
+      message: `Are you sure you want to permanently delete this ${log.status.toUpperCase()} account log (${log.username}) from ${log.platformName}? This action directly purges the record from Appwrite Cloud DB and cannot be reversed.`
+    });
+  };
+
+  const handleRequestBulkDelete = () => {
+    if (selectedLogIds.length === 0) return;
+    setDeleteConfirmModal({
+      type: 'bulk',
+      count: selectedLogIds.length,
+      title: `Bulk Delete ${selectedLogIds.length} Selected Account Logs`,
+      message: `Permanently delete ${selectedLogIds.length} selected account logs from Appwrite Cloud? This action is irreversible.`
+    });
+  };
+
+  const handleRequestPurgeSold = () => {
+    const soldIds = displayedInventoryLogs.filter(l => l.status === 'sold').map(l => l.id);
+    if (soldIds.length === 0) {
+      toast('No SOLD accounts found in the current filtered view to purge.');
+      return;
+    }
+    setDeleteConfirmModal({
+      type: 'purge_sold',
+      count: soldIds.length,
+      ids: soldIds,
+      title: `Purge ${soldIds.length} Sold Accounts`,
+      message: `Permanently purge all ${soldIds.length} SOLD account logs currently filtered in this view? This safely cleans up database space while preserving customer purchase order records in the Orders log.`
+    });
+  };
+
+  const handleExecuteDeletion = async () => {
+    if (!deleteConfirmModal) return;
+    setIsBulkDeleting(true);
+    try {
+      if (deleteConfirmModal.type === 'single') {
+        const log = deleteConfirmModal.log;
+        await adminDeleteLog({
+          platformId: log.platformId,
+          collectionId: log.collectionId,
+          documentId: log.id
+        });
+        toast(`🗑️ Log for ${log.username} permanently deleted from ${log.platformName}.`);
+      } else if (deleteConfirmModal.type === 'bulk') {
+        const logsToDelete = inventoryLogs.filter(l => selectedLogIds.includes(l.id));
+        const byPlatform = {};
+        logsToDelete.forEach(l => {
+          if (!byPlatform[l.platformId]) {
+            byPlatform[l.platformId] = { collectionId: l.collectionId, ids: [] };
+          }
+          byPlatform[l.platformId].ids.push(l.id);
+        });
+
+        let totalDeleted = 0;
+        for (const [pId, group] of Object.entries(byPlatform)) {
+          const res = await adminBulkDeleteLogs({
+            platformId: pId,
+            collectionId: group.collectionId,
+            documentIds: group.ids
+          });
+          totalDeleted += (res?.deletedCount || 0);
+        }
+        toast(`🗑️ Successfully deleted ${totalDeleted} account logs from Appwrite database.`);
+        setSelectedLogIds([]);
+      } else if (deleteConfirmModal.type === 'purge_sold') {
+        const idsToPurge = deleteConfirmModal.ids;
+        const logsToPurge = inventoryLogs.filter(l => idsToPurge.includes(l.id));
+        const byPlatform = {};
+        logsToPurge.forEach(l => {
+          if (!byPlatform[l.platformId]) {
+            byPlatform[l.platformId] = { collectionId: l.collectionId, ids: [] };
+          }
+          byPlatform[l.platformId].ids.push(l.id);
+        });
+
+        let totalPurged = 0;
+        for (const [pId, group] of Object.entries(byPlatform)) {
+          const res = await adminBulkDeleteLogs({
+            platformId: pId,
+            collectionId: group.collectionId,
+            documentIds: group.ids
+          });
+          totalPurged += (res?.deletedCount || 0);
+        }
+        toast(`🧹 Successfully purged ${totalPurged} SOLD logs from Appwrite database.`);
+        setSelectedLogIds([]);
+      }
+      setDeleteConfirmModal(null);
+      await loadInventoryLogs();
+    } catch (err) {
+      console.error('Deletion error:', err);
+      toast(`❌ Error deleting logs: ${err.message}`);
+    } finally {
+      setIsBulkDeleting(false);
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -968,6 +1174,13 @@ export default function AdminDashboard({ onShowToast }) {
         </button>
         <button 
           type="button" 
+          className={`dash-tab-btn ${activeTab === 'database' ? 'active' : ''}`}
+          onClick={() => setActiveTab('database')}
+        >
+          🗄️ Database View {inventoryLogs.length > 0 ? `(${inventoryLogs.length})` : ''}
+        </button>
+        <button 
+          type="button" 
           className={`dash-tab-btn ${activeTab === 'platforms' ? 'active' : ''}`}
           onClick={() => setActiveTab('platforms')}
         >
@@ -1306,6 +1519,385 @@ export default function AdminDashboard({ onShowToast }) {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB: INVENTORY & DATABASE VIEW (APPWRITE CLOUD DB)
+          ========================================================================= */}
+      {activeTab === 'database' && (
+        <div className="dashboard-tab-content">
+          <div className="inventory-tab-container">
+            {/* Header Row */}
+            <div className="inventory-header-row">
+              <div className="inventory-header-titles">
+                <h3>🗄️ Appwrite Cloud Database View &amp; Logs Inventory</h3>
+                <p>
+                  Inspect, search, and manage all uploaded account credentials across platforms. Delete old or unwanted records individually or in bulk.
+                </p>
+              </div>
+
+              <div className="inventory-stats-pills">
+                <span className="inventory-stat-badge">
+                  <span>Total in View:</span>
+                  <strong>{inventoryStats.total}</strong>
+                </span>
+                <span className="inventory-stat-badge available">
+                  <span>🟢 Available:</span>
+                  <strong>{inventoryStats.available}</strong>
+                </span>
+                <span className="inventory-stat-badge sold">
+                  <span>🔴 Sold:</span>
+                  <strong>{inventoryStats.sold}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* Storage Policy & Sold Logs Educational Notice */}
+            <div className={`inventory-storage-notice ${inventoryStatusTab === 'sold' ? 'sold-notice' : ''}`}>
+              <span className="inventory-storage-notice-icon">
+                {inventoryStatusTab === 'sold' ? '⚠️' : 'ℹ️'}
+              </span>
+              <div>
+                <strong>Appwrite Cloud Storage Policy:</strong>
+                {inventoryStatusTab === 'sold' ? (
+                  <span>
+                    {' '}When customer orders are fulfilled, purchased accounts are <strong>retained in the database with status &quot;sold&quot;</strong> (they are not automatically deleted). This preserves historical delivery records. You can safely purge old sold records below at any time without affecting customer order receipts in the Orders Stream.
+                  </span>
+                ) : (
+                  <span>
+                    {' '}Account logs uploaded via the Ingestion Zone remain in their respective Appwrite collections indefinitely until dispensed or deleted. Sold logs remain marked as &quot;sold&quot; so you can monitor who received them and clean them up when needed.
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Filter and Search Controls Card */}
+            <div className="inventory-controls-card">
+              <div className="inventory-filter-bar">
+                <div className="inventory-filter-group">
+                  {/* Status Toggle Tabs */}
+                  <div className="inventory-status-tabs">
+                    <button
+                      type="button"
+                      className={`inv-status-tab-btn ${inventoryStatusTab === 'available' ? 'active' : ''}`}
+                      onClick={() => setInventoryStatusTab('available')}
+                    >
+                      🟢 Available ({inventoryLogs.filter(l => l.status === 'available').length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`inv-status-tab-btn ${inventoryStatusTab === 'sold' ? 'active sold-active' : ''}`}
+                      onClick={() => setInventoryStatusTab('sold')}
+                    >
+                      🔴 Sold / Dispensed ({inventoryLogs.filter(l => l.status === 'sold').length})
+                    </button>
+                    <button
+                      type="button"
+                      className={`inv-status-tab-btn ${inventoryStatusTab === 'all' ? 'active all-active' : ''}`}
+                      onClick={() => setInventoryStatusTab('all')}
+                    >
+                      🌐 All Records
+                    </button>
+                  </div>
+
+                  {/* Platform Selector */}
+                  <select
+                    className="inventory-select-control"
+                    value={inventoryPlatform}
+                    onChange={(e) => {
+                      setInventoryPlatform(e.target.value);
+                      setInventorySubType(''); // reset package filter
+                    }}
+                  >
+                    <option value="all">📁 All Platforms (Aggregated)</option>
+                    {(platforms.length > 0 ? platforms : PLATFORM_CATEGORIES).map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+
+                  {/* Sub-type / Package Selector (if specific platform selected) */}
+                  {inventoryPlatform !== 'all' && inventoryPlatformPackages.length > 0 && (
+                    <select
+                      className="inventory-select-control"
+                      value={inventorySubType}
+                      onChange={(e) => setInventorySubType(e.target.value)}
+                    >
+                      <option value="">📦 All Packages / Sub-Types</option>
+                      {inventoryPlatformPackages.map(pkg => (
+                        <option key={pkg.id} value={pkg.id}>{pkg.title}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                <div className="inventory-filter-group">
+                  {/* Search Bar */}
+                  <div className="inventory-search-wrap">
+                    <span className="search-icon">🔍</span>
+                    <input
+                      type="text"
+                      className="inventory-search-input"
+                      placeholder="Search username, email, sold-to, doc ID..."
+                      value={inventorySearch}
+                      onChange={(e) => setInventorySearch(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Refresh Button */}
+                  <button
+                    type="button"
+                    className="btn-inventory-refresh"
+                    onClick={loadInventoryLogs}
+                    disabled={loadingInventory}
+                  >
+                    {loadingInventory ? '🔄 Syncing...' : '🔄 Refresh DB'}
+                  </button>
+
+                  {/* Purge Sold Button if viewing sold logs */}
+                  {inventoryStatusTab === 'sold' && displayedInventoryLogs.some(l => l.status === 'sold') && (
+                    <button
+                      type="button"
+                      className="btn-inv-action btn-inv-delete"
+                      style={{ padding: '7px 14px' }}
+                      onClick={handleRequestPurgeSold}
+                      disabled={isBulkDeleting}
+                    >
+                      🧹 Purge All Sold ({displayedInventoryLogs.filter(l => l.status === 'sold').length})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Bulk Actions Floating Bar */}
+              {selectedLogIds.length > 0 && (
+                <div className="inventory-bulk-bar">
+                  <div className="inventory-bulk-left">
+                    <span>✓ <strong>{selectedLogIds.length}</strong> log{selectedLogIds.length > 1 ? 's' : ''} selected</span>
+                    <button
+                      type="button"
+                      className="btn-mini-copy"
+                      style={{ color: '#94a3b8', textDecoration: 'underline' }}
+                      onClick={() => setSelectedLogIds([])}
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-bulk-delete"
+                    onClick={handleRequestBulkDelete}
+                    disabled={isBulkDeleting}
+                  >
+                    {isBulkDeleting ? 'Deleting...' : `🗑️ Delete Selected (${selectedLogIds.length})`}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Inventory Table Wrap */}
+            <div className="inventory-table-wrap">
+              {loadingInventory ? (
+                <div className="inventory-empty-state">
+                  <span className="empty-icon">⏳</span>
+                  <p>Querying Appwrite Cloud collections...</p>
+                </div>
+              ) : displayedInventoryLogs.length === 0 ? (
+                <div className="inventory-empty-state">
+                  <span className="empty-icon">📂</span>
+                  <p>
+                    {inventorySearch 
+                      ? `No account logs matched "${inventorySearch}". Try a different keyword.` 
+                      : `No ${inventoryStatusTab !== 'all' ? inventoryStatusTab.toUpperCase() : ''} account logs found in the database for this filter.`}
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setInventoryPlatform('all');
+                      setInventoryStatusTab('all');
+                      setInventorySubType('');
+                      setInventorySearch('');
+                    }}
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              ) : (
+                <table className="inventory-table">
+                  <thead>
+                    <tr>
+                      <th className="inv-checkbox-col">
+                        <input
+                          type="checkbox"
+                          className="inv-checkbox"
+                          checked={selectedLogIds.length === displayedInventoryLogs.length && displayedInventoryLogs.length > 0}
+                          onChange={handleToggleSelectAllLogs}
+                        />
+                      </th>
+                      <th>Platform / Package</th>
+                      <th>Username / Identifier</th>
+                      <th>Password</th>
+                      <th>2FA / Extra</th>
+                      <th>Status</th>
+                      <th>Purchase / Tracking</th>
+                      <th>Price</th>
+                      <th style={{ textAlign: 'right' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {displayedInventoryLogs.map((log) => {
+                      const isSelected = selectedLogIds.includes(log.id);
+                      const isPwdRevealed = !!revealedPasswords[log.id];
+
+                      return (
+                        <tr key={log.id} className={isSelected ? 'is-selected' : ''}>
+                          <td className="inv-checkbox-col">
+                            <input
+                              type="checkbox"
+                              className="inv-checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleSelectLog(log.id)}
+                            />
+                          </td>
+
+                          <td>
+                            <div className="inv-platform-cell">
+                              <BrandIcon iconKey={log.platformIcon} name={log.platformName} size={22} />
+                              <div className="inv-platform-info">
+                                <span className="inv-platform-name">{log.platformName}</span>
+                                <span className="inv-subtype-name">{log.subTypeTitle}</span>
+                              </div>
+                            </div>
+                          </td>
+
+                          <td>
+                            <div className="inv-username-cell">
+                              <span>{log.username}</span>
+                              <button
+                                type="button"
+                                className="btn-mini-copy"
+                                title="Copy username"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(log.username);
+                                  toast(`Copied ${log.username}`);
+                                }}
+                              >
+                                📋
+                              </button>
+                            </div>
+                            {log.mail && (
+                              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                ✉️ {log.mail}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <div className="inv-password-cell">
+                              <span className="inv-password-text">
+                                {isPwdRevealed ? (log.password || '—') : (log.password ? '••••••••' : '—')}
+                              </span>
+                              {log.password && (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="btn-mini-copy"
+                                    title={isPwdRevealed ? 'Hide Password' : 'Show Password'}
+                                    onClick={() => togglePasswordReveal(log.id)}
+                                  >
+                                    {isPwdRevealed ? '👁️' : '🙈'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="btn-mini-copy"
+                                    title="Copy Password"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(log.password);
+                                      toast('Password copied');
+                                    }}
+                                  >
+                                    📋
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+
+                          <td>
+                            {log.twoFactorKey ? (
+                              <span className="inv-badge-2fa" title={`2FA Key: ${log.twoFactorKey}`}>
+                                🔑 2FA Key
+                              </span>
+                            ) : log.customData && Object.keys(log.customData).length > 0 ? (
+                              <span className="inv-badge-2fa" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.35)' }}>
+                                📑 {Object.keys(log.customData).length} Fields
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>—</span>
+                            )}
+                          </td>
+
+                          <td>
+                            <span className={`inv-status-pill ${log.status}`}>
+                              {log.status === 'sold' ? '🔴 Sold' : '🟢 Available'}
+                            </span>
+                          </td>
+
+                          <td>
+                            {log.status === 'sold' ? (
+                              <div style={{ fontSize: '0.75rem' }}>
+                                <div style={{ color: '#f87171', fontWeight: 600 }}>
+                                  👤 {log.soldToEmail || 'Purchased by user'}
+                                </div>
+                                {log.soldAt && (
+                                  <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
+                                    🕒 {formatDateTime(log.soldAt)}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                                🕒 Ingested: {formatRelativeTime(log.createdAt) || 'Recent'}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <strong style={{ color: '#fff', fontSize: '0.84rem' }}>
+                              ₦{Number(log.price || 1500).toLocaleString()}
+                            </strong>
+                          </td>
+
+                          <td style={{ textAlign: 'right' }}>
+                            <div className="inv-actions-cell" style={{ justifyContent: 'flex-end' }}>
+                              <button
+                                type="button"
+                                className="btn-inv-action btn-inv-view"
+                                title="Inspect Full Record"
+                                onClick={() => setLogDetailsModal(log)}
+                              >
+                                👁️ View
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-inv-action btn-inv-delete"
+                                title="Delete Log"
+                                onClick={() => handleRequestDeleteSingle(log)}
+                                disabled={isBulkDeleting}
+                              >
+                                🗑️ Delete
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -2578,6 +3170,239 @@ export default function AdminDashboard({ onShowToast }) {
         }}
         onClose={() => setShowIconPicker(false)}
       />
+
+      {/* =========================================================================
+          MODAL: INVENTORY LOG FULL DETAILS INSPECTOR
+          ========================================================================= */}
+      {logDetailsModal && (
+        <div className="inv-modal-overlay" onClick={() => setLogDetailsModal(null)}>
+          <div className="inv-modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="inv-modal-header">
+              <h4 className="inv-modal-title">
+                <BrandIcon iconKey={logDetailsModal.platformIcon} name={logDetailsModal.platformName} size={24} />
+                <span>Account Credential Inspector</span>
+                <span className={`inv-status-pill ${logDetailsModal.status}`}>
+                  {logDetailsModal.status === 'sold' ? '🔴 Sold' : '🟢 Available'}
+                </span>
+              </h4>
+              <button 
+                type="button" 
+                className="inv-modal-close"
+                onClick={() => setLogDetailsModal(null)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="inv-credentials-grid">
+              <div className="inv-cred-field">
+                <span className="inv-cred-label">Platform &amp; Package</span>
+                <span className="inv-cred-value">
+                  {logDetailsModal.platformName} — {logDetailsModal.subTypeTitle}
+                </span>
+              </div>
+
+              <div className="inv-cred-field">
+                <span className="inv-cred-label">Listing Price</span>
+                <span className="inv-cred-value" style={{ color: '#38bdf8', fontWeight: 700 }}>
+                  ₦{Number(logDetailsModal.price || 1500).toLocaleString()} NGN
+                </span>
+              </div>
+
+              <div className="inv-cred-field">
+                <span className="inv-cred-label">Username / UID / Login</span>
+                <div className="inv-cred-value">
+                  <span>{logDetailsModal.username || '—'}</span>
+                  {logDetailsModal.username && (
+                    <button
+                      type="button"
+                      className="btn-mini-copy"
+                      onClick={() => {
+                        navigator.clipboard.writeText(logDetailsModal.username);
+                        toast('Copied username');
+                      }}
+                    >
+                      📋
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="inv-cred-field">
+                <span className="inv-cred-label">Password</span>
+                <div className="inv-cred-value">
+                  <span>{logDetailsModal.password || '—'}</span>
+                  {logDetailsModal.password && (
+                    <button
+                      type="button"
+                      className="btn-mini-copy"
+                      onClick={() => {
+                        navigator.clipboard.writeText(logDetailsModal.password);
+                        toast('Copied password');
+                      }}
+                    >
+                      📋
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {logDetailsModal.twoFactorKey && (
+                <div className="inv-cred-field" style={{ gridColumn: '1 / -1' }}>
+                  <span className="inv-cred-label">2FA / Security Key</span>
+                  <div className="inv-cred-value">
+                    <span style={{ color: '#c084fc', wordBreak: 'break-all' }}>{logDetailsModal.twoFactorKey}</span>
+                    <button
+                      type="button"
+                      className="btn-mini-copy"
+                      onClick={() => {
+                        navigator.clipboard.writeText(logDetailsModal.twoFactorKey);
+                        toast('Copied 2FA key');
+                      }}
+                    >
+                      📋
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {logDetailsModal.mail && (
+                <div className="inv-cred-field">
+                  <span className="inv-cred-label">Recovery Email</span>
+                  <div className="inv-cred-value">
+                    <span>{logDetailsModal.mail}</span>
+                    <button
+                      type="button"
+                      className="btn-mini-copy"
+                      onClick={() => {
+                        navigator.clipboard.writeText(logDetailsModal.mail);
+                        toast('Copied email');
+                      }}
+                    >
+                      📋
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {logDetailsModal.mailPassword && (
+                <div className="inv-cred-field">
+                  <span className="inv-cred-label">Email Password</span>
+                  <div className="inv-cred-value">
+                    <span>{logDetailsModal.mailPassword}</span>
+                    <button
+                      type="button"
+                      className="btn-mini-copy"
+                      onClick={() => {
+                        navigator.clipboard.writeText(logDetailsModal.mailPassword);
+                        toast('Copied email password');
+                      }}
+                    >
+                      📋
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {logDetailsModal.customData && Object.keys(logDetailsModal.customData).length > 0 && (
+                Object.entries(logDetailsModal.customData)
+                  .filter(([k]) => !['username', 'password', 'twoFactorKey', 'two_factor_key', 'mail', 'mailPassword', 'mail_password'].includes(k))
+                  .map(([key, val]) => (
+                  <div key={key} className="inv-cred-field">
+                    <span className="inv-cred-label">{key.replace(/^custom_/, '').replace(/_/g, ' ')}</span>
+                    <div className="inv-cred-value">
+                      <span>{String(val)}</span>
+                      <button
+                        type="button"
+                        className="btn-mini-copy"
+                        onClick={() => {
+                          navigator.clipboard.writeText(String(val));
+                          toast(`Copied ${key}`);
+                        }}
+                      >
+                        📋
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {logDetailsModal.rawRecord && (
+              <div>
+                <span className="inv-cred-label" style={{ display: 'block', marginBottom: '6px' }}>
+                  Raw Pipe/Delimiter Ingestion Line:
+                </span>
+                <div className="inv-raw-box">
+                  {logDetailsModal.rawRecord}
+                </div>
+              </div>
+            )}
+
+            {logDetailsModal.status === 'sold' && (
+              <div style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', padding: '12px 16px' }}>
+                <span style={{ color: '#f87171', fontWeight: 700, fontSize: '0.85rem', display: 'block', marginBottom: '4px' }}>
+                  🛒 Purchase Fulfillment Information
+                </span>
+                <div style={{ fontSize: '0.8rem', color: '#fff', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                  <div><strong>Buyer Email:</strong> {logDetailsModal.soldToEmail || 'N/A'}</div>
+                  <div><strong>Buyer User ID:</strong> {logDetailsModal.soldToUserId || 'N/A'}</div>
+                  <div><strong>Fulfilled At:</strong> {logDetailsModal.soldAt ? formatDateTime(logDetailsModal.soldAt) : 'N/A'}</div>
+                </div>
+              </div>
+            )}
+
+            <div className="inv-modal-meta-row">
+              <div>Document ID: <code>{logDetailsModal.id}</code></div>
+              <div>Ingested: {formatDateTime(logDetailsModal.createdAt)}</div>
+              <div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setLogDetailsModal(null)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: DELETE / BULK DELETE CONFIRMATION DIALOG
+          ========================================================================= */}
+      {deleteConfirmModal && (
+        <div className="inv-modal-overlay" onClick={() => !isBulkDeleting && setDeleteConfirmModal(null)}>
+          <div className="inv-modal-box" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="inv-delete-dialog">
+              <div className="inv-delete-warning-icon">⚠️</div>
+              <h4>{deleteConfirmModal.title}</h4>
+              <p>{deleteConfirmModal.message}</p>
+
+              <div className="inv-delete-dialog-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setDeleteConfirmModal(null)}
+                  disabled={isBulkDeleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ background: '#dc2626', borderColor: '#b91c1c' }}
+                  onClick={handleExecuteDeletion}
+                  disabled={isBulkDeleting}
+                >
+                  {isBulkDeleting ? 'Deleting...' : 'Confirm & Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

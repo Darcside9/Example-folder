@@ -749,5 +749,95 @@ export default async ({ req, res, log, error }) => {
     }
   }
 
+  // ACTION 10: ADMIN LIST PLATFORM LOGS (FULL DATABASE VIEW INCLUDING SOLD STATUS)
+  if (action === 'admin_list_platform_logs') {
+    const { platformId: targetPlatformId, status: queryStatus, subTypeId: querySubTypeId, limit: queryLimit, offset: queryOffset } = data;
+    const colId = await getPlatformCollectionId(databases, targetPlatformId);
+    if (!colId) {
+      return res.json({ error: `Unknown platform: ${targetPlatformId}` }, 400);
+    }
+
+    try {
+      const queries = [Query.limit(queryLimit || 100), Query.orderDesc('$createdAt')];
+      if (queryOffset) {
+        queries.push(Query.offset(queryOffset));
+      }
+      if (queryStatus && queryStatus !== 'all') {
+        queries.push(Query.equal('status', queryStatus));
+      }
+      if (querySubTypeId) {
+        queries.push(Query.equal('sub_type_id', querySubTypeId));
+      }
+
+      const result = await databases.listDocuments(DATABASE_ID, colId, queries);
+      return res.json({
+        success: true,
+        platformId: targetPlatformId,
+        collectionId: colId,
+        total: result.total,
+        documents: result.documents
+      });
+    } catch (err) {
+      error(`Error admin querying logs: ${err.message}`);
+      return res.json({ error: err.message }, 500);
+    }
+  }
+
+  // ACTION 11: ADMIN DELETE SINGLE LOG
+  if (action === 'admin_delete_log') {
+    const { platformId: targetPlatformId, collectionId: targetColId, documentId } = data;
+    if (!documentId) return res.json({ error: 'documentId is required' }, 400);
+
+    const colId = targetColId || (targetPlatformId ? await getPlatformCollectionId(databases, targetPlatformId) : null);
+    if (!colId) {
+      return res.json({ error: `Could not resolve collection for deletion` }, 400);
+    }
+
+    try {
+      await databases.deleteDocument(DATABASE_ID, colId, documentId);
+      log(`Admin deleted document ${documentId} from collection ${colId}`);
+      return res.json({ success: true, deletedDocId: documentId, collectionId: colId });
+    } catch (err) {
+      error(`Error deleting log document: ${err.message}`);
+      return res.json({ error: err.message }, 500);
+    }
+  }
+
+  // ACTION 12: ADMIN BULK DELETE LOGS
+  if (action === 'admin_bulk_delete_logs') {
+    const { platformId: targetPlatformId, collectionId: targetColId, documentIds } = data;
+    if (!Array.isArray(documentIds) || documentIds.length === 0) {
+      return res.json({ error: 'documentIds array is required' }, 400);
+    }
+
+    const colId = targetColId || (targetPlatformId ? await getPlatformCollectionId(databases, targetPlatformId) : null);
+    if (!colId) {
+      return res.json({ error: `Could not resolve collection for bulk deletion` }, 400);
+    }
+
+    let deletedCount = 0;
+    let failedCount = 0;
+    const errors = [];
+
+    for (const docId of documentIds) {
+      try {
+        await databases.deleteDocument(DATABASE_ID, colId, docId);
+        deletedCount++;
+      } catch (delErr) {
+        failedCount++;
+        errors.push({ id: docId, error: delErr.message });
+      }
+    }
+
+    log(`Admin bulk deleted ${deletedCount}/${documentIds.length} from ${colId}`);
+    return res.json({
+      success: true,
+      deletedCount,
+      failedCount,
+      errors
+    });
+  }
+
   return res.json({ error: `Unrecognized action: ${action}` }, 400);
 };
+

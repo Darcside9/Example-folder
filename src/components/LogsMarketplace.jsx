@@ -518,25 +518,6 @@ export default function LogsMarketplace({
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
               </div>
-
-              {/* Shopping Cart Button */}
-              <button
-                type="button"
-                className={`logs-cart-toggle-btn ${cart.length > 0 ? 'has-items' : ''}`}
-                onClick={() => setIsCartOpen(true)}
-                title="View Bulk Purchase Shopping Cart"
-              >
-                <span style={{ fontSize: '1.05rem' }}>🛒</span>
-                <span>Cart</span>
-                {cart.length > 0 && (
-                  <>
-                    <span className="cart-count-badge">{cart.length}</span>
-                    <span className="cart-subtotal-text">
-                      {siteConfig.formatNaira(cartTotal)}
-                    </span>
-                  </>
-                )}
-              </button>
             </div>
           </div>
 
