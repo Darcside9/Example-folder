@@ -1,6 +1,53 @@
+import { useState, useEffect, useMemo } from 'react';
 import LiveTerminalDemo from './LiveTerminalDemo';
+import { fetchLivePricing, subscribeToPricingUpdates } from '../lib/pricingService';
+import { CORE_USA_PLATFORMS, CORE_CANADA_PLATFORMS, CORE_UK_PLATFORMS } from '../lib/tigerSmsService';
+import { siteConfig } from '../data/siteConfig';
 
 export default function Hero({ onOpenOrderModal }) {
+  const [livePricingDocs, setLivePricingDocs] = useState([]);
+
+  useEffect(() => {
+    fetchLivePricing().then(items => {
+      if (Array.isArray(items)) setLivePricingDocs(items);
+    }).catch(() => {});
+
+    const unsubscribe = subscribeToPricingUpdates(items => {
+      if (Array.isArray(items)) setLivePricingDocs(items);
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
+  // Compute minimum live price across all marketplace carrier services
+  const minLivePrice = useMemo(() => {
+    // 1. Check all platforms in core catalog
+    const allPlatforms = [
+      ...CORE_USA_PLATFORMS,
+      ...CORE_CANADA_PLATFORMS,
+      ...CORE_UK_PLATFORMS
+    ];
+
+    const catalogPrices = allPlatforms
+      .map(p => Number(p.defaultRetailNgn))
+      .filter(p => !isNaN(p) && p > 0);
+
+    const defaultMin = catalogPrices.length > 0 ? Math.min(...catalogPrices) : 500;
+
+    // 2. Check live overrides from Appwrite
+    const liveSmsPrices = (livePricingDocs || [])
+      .filter(d => d.product_type === 'sms_service' && d.is_active !== false && typeof d.price_usd === 'number' && d.price_usd > 0)
+      .map(d => d.price_usd);
+
+    if (liveSmsPrices.length > 0) {
+      return Math.min(...liveSmsPrices);
+    }
+
+    return defaultMin;
+  }, [livePricingDocs]);
+
   return (
     <section className="hero section-hero reveal-on-scroll">
       <div className="hero-copy">
@@ -24,7 +71,7 @@ export default function Hero({ onOpenOrderModal }) {
             className="btn btn-primary btn-lg"
             onClick={onOpenOrderModal}
           >
-            <span>Rent Numbers from ₦200</span>
+            <span>Rent Numbers from {siteConfig.formatNaira(minLivePrice)}</span>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="5" y1="12" x2="19" y2="12"/>
               <polyline points="12 5 19 12 12 19"/>

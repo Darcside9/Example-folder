@@ -7,14 +7,16 @@ import { APPWRITE_CONFIG, client, databases, Query, ID } from './appwrite';
 
 export const DEFAULT_PRODUCT_PRICING = [
   // Carrier SMS Services (Prices in NGN)
-  { product_id: 'telegram', name: 'Telegram', category: 'messaging', product_type: 'sms_service', price_usd: 300, is_active: true, carrier_speed: '< 3.2s' },
-  { product_id: 'whatsapp', name: 'WhatsApp', category: 'messaging', product_type: 'sms_service', price_usd: 350, is_active: true, carrier_speed: '< 4.1s' },
-  { product_id: 'openai', name: 'OpenAI / ChatGPT', category: 'ai', product_type: 'sms_service', price_usd: 250, is_active: false, carrier_speed: 'Coming Soon' },
-  { product_id: 'google', name: 'Google & Gmail', category: 'email', product_type: 'sms_service', price_usd: 200, is_active: false, carrier_speed: 'Coming Soon' },
+  { product_id: 'apple', name: 'Apple / iCloud ID', category: 'tech', product_type: 'sms_service', price_usd: 500, is_active: true, carrier_speed: '< 4s' },
+  { product_id: 'telegram', name: 'Telegram', category: 'messaging', product_type: 'sms_service', price_usd: 2700, is_active: true, carrier_speed: '< 3s' },
+  { product_id: 'whatsapp', name: 'WhatsApp / WA Business', category: 'messaging', product_type: 'sms_service', price_usd: 2700, is_active: true, carrier_speed: '< 3s' },
+  { product_id: 'chatgpt', name: 'ChatGPT / OpenAI', category: 'tech', product_type: 'sms_service', price_usd: 760, is_active: true, carrier_speed: '< 4s' },
+  { product_id: 'google', name: 'Google & Gmail', category: 'tech', product_type: 'sms_service', price_usd: 1020, is_active: true, carrier_speed: '< 4s' },
+  { product_id: 'tiktok', name: 'TikTok / Douyin', category: 'social', product_type: 'sms_service', price_usd: 700, is_active: true, carrier_speed: '< 4s' },
 
   // Account Log Categories (Prices in NGN)
   { product_id: 'facebook', name: 'Facebook Accounts', category: 'social_logs', product_type: 'account_log', price_usd: 1500, is_active: true, carrier_speed: 'Instant Delivery' },
-  { product_id: 'tiktok', name: 'TikTok Accounts', category: 'social_logs', product_type: 'account_log', price_usd: 2200, is_active: true, carrier_speed: 'Instant Delivery' },
+  { product_id: 'tiktok_logs', name: 'TikTok Accounts', category: 'social_logs', product_type: 'account_log', price_usd: 2200, is_active: true, carrier_speed: 'Instant Delivery' },
   { product_id: 'instagram', name: 'Instagram Accounts', category: 'social_logs', product_type: 'account_log', price_usd: 1800, is_active: true, carrier_speed: 'Instant Delivery' },
   { product_id: 'twitter', name: 'Twitter / X Accounts', category: 'social_logs', product_type: 'account_log', price_usd: 2000, is_active: true, carrier_speed: 'Instant Delivery' },
   { product_id: 'textplus', name: 'Textplus Accounts', category: 'carrier_logs', product_type: 'account_log', price_usd: 1200, is_active: true, carrier_speed: 'Instant Delivery' },

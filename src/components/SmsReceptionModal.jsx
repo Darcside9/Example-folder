@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import BrandIcon from './BrandIcon';
 import { siteConfig } from '../data/siteConfig';
+import { checkTigerSmsStatus, finishTigerSmsActivation } from '../lib/tigerSmsService';
 
 export default function SmsReceptionModal({
   isOpen,
   onClose,
   order,
-  onSimulateSms,
+  onCodeReceived,
   onCancelOrder,
   onTimeoutOrder
 }) {
@@ -15,6 +16,9 @@ export default function SmsReceptionModal({
   const [secondsLeft, setSecondsLeft] = useState(15 * 60);
   const [isCancelling, setIsCancelling] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+
+  const isCodeReceived = order?.status === 'code_received' && Boolean(order?.sms_code);
+  const isCancelled = order?.status === 'cancelled' || order?.status === 'refunded';
 
   // Initialize countdown based on order creation/expiry
   useEffect(() => {
@@ -27,7 +31,7 @@ export default function SmsReceptionModal({
 
   // Countdown timer loop
   useEffect(() => {
-    if (!isOpen || !order || order.status === 'code_received' || timedOut) return;
+    if (!isOpen || !order || isCodeReceived || timedOut) return;
 
     const timer = setInterval(() => {
       setSecondsLeft((prev) => {
@@ -44,15 +48,46 @@ export default function SmsReceptionModal({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isOpen, order?.id, order?.status, timedOut, onTimeoutOrder]);
+  }, [isOpen, order?.id, order?.status, isCodeReceived, timedOut, onTimeoutOrder]);
+
+  // Real-time polling for incoming SMS OTP from Tiger SMS Carrier Gateway
+  useEffect(() => {
+    if (!isOpen || !order?.activation_id || isCodeReceived || timedOut || isCancelled) return;
+
+    let isPolling = false;
+    const pollInterval = setInterval(async () => {
+      if (isPolling) return;
+      isPolling = true;
+      try {
+        const res = await checkTigerSmsStatus(order.activation_id);
+        if (res.status === 'STATUS_OK' && res.code) {
+          clearInterval(pollInterval);
+          // Confirm activation on provider
+          finishTigerSmsActivation(order.activation_id).catch(() => {});
+          if (onCodeReceived) {
+            onCodeReceived(order, res.code, res.message || `Your ${order.service_name} verification code is: ${res.code}`);
+          }
+        } else if (res.status === 'STATUS_CANCEL') {
+          clearInterval(pollInterval);
+          if (onTimeoutOrder) {
+            onTimeoutOrder(order);
+          }
+        }
+      } catch (pollErr) {
+        console.warn('Live SMS polling error:', pollErr.message);
+      } finally {
+        isPolling = false;
+      }
+    }, 3500);
+
+    return () => clearInterval(pollInterval);
+  }, [isOpen, order?.activation_id, order?.status, timedOut, isCancelled, onCodeReceived, onTimeoutOrder]);
 
   if (!isOpen || !order) return null;
 
   const mins = Math.floor(secondsLeft / 60);
   const secs = secondsLeft % 60;
   const timeFormatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  const isCodeReceived = order.status === 'code_received' && Boolean(order.sms_code);
-  const isCancelled = order.status === 'cancelled' || order.status === 'refunded';
   const countryFlag = order.country_flag || (order.country_code === 'UK' || order.country_code === 'GB' ? '🇬🇧' : (order.country_code === 'CA' ? '🇨🇦' : '🇺🇸'));
   const countryName = order.country_name || (order.country_code === 'UK' || order.country_code === 'GB' ? 'United Kingdom' : (order.country_code === 'CA' ? 'Canada' : 'United States'));
 
@@ -301,43 +336,42 @@ export default function SmsReceptionModal({
             <div 
               className="sms-waiting-radar"
               style={{
-                padding: '20px',
+                padding: '24px 20px',
                 borderRadius: '12px',
-                background: 'rgba(30, 41, 59, 0.4)',
-                border: '1px dashed rgba(56, 189, 248, 0.3)',
+                background: 'rgba(30, 41, 59, 0.45)',
+                border: '1px dashed rgba(56, 189, 248, 0.35)',
                 textAlign: 'center',
                 marginBottom: '18px'
               }}
             >
-              <div className="radar-sweep-animation" style={{ fontSize: '2rem', marginBottom: '8px' }}>
+              <div className="radar-sweep-animation" style={{ fontSize: '2.2rem', marginBottom: '8px' }}>
                 📡
               </div>
-              <strong style={{ fontSize: '0.95rem', color: '#f8fafc', display: 'block' }}>
-                Carrier Gateway Connected
+              <strong style={{ fontSize: '1rem', color: '#f8fafc', display: 'block', marginBottom: '6px' }}>
+                Live Carrier Gateway Connected
               </strong>
-              <p style={{ fontSize: '0.82rem', color: '#94a3b8', margin: '6px 0 14px', lineHeight: 1.45 }}>
+              <p style={{ fontSize: '0.84rem', color: '#94a3b8', margin: '0 0 16px', lineHeight: 1.5 }}>
                 1. Paste <strong>{order.phone_number}</strong> into {order.service_name}.<br/>
-                2. Tap request SMS code.<br/>
-                3. Your code will appear here automatically within seconds.
+                2. Tap <em>Send SMS verification code</em>.<br/>
+                3. Your code will appear here in real-time as soon as the carrier routes the SMS.
               </p>
 
-              {/* Simulation test button */}
-              {onSimulateSms && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-secondary"
-                  onClick={() => onSimulateSms(order.id)}
-                  style={{
-                    fontSize: '0.78rem',
-                    padding: '5px 14px',
-                    border: '1px solid rgba(56, 189, 248, 0.4)',
-                    color: '#38bdf8'
-                  }}
-                  title="Simulate SMS OTP arrival without calling external API"
-                >
-                  ⚡ Simulate SMS OTP Arrival (Demo Test)
-                </button>
-              )}
+              <div 
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  padding: '6px 16px',
+                  borderRadius: '20px',
+                  background: 'rgba(56, 189, 248, 0.12)',
+                  border: '1px solid rgba(56, 189, 248, 0.25)',
+                  fontSize: '0.8rem',
+                  color: '#38bdf8'
+                }}
+              >
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#38bdf8', display: 'inline-block', boxShadow: '0 0 8px #38bdf8' }} />
+                <span>Actively listening to live carrier line for OTP packet...</span>
+              </div>
             </div>
           )}
 

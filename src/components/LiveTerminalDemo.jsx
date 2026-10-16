@@ -47,7 +47,7 @@ export default function LiveTerminalDemo() {
       <div className="panel-header">
         <div className="panel-header-left">
           <span className="panel-live-pulse" />
-          <span className="panel-tag">Live Verification Simulator</span>
+          <span className="panel-tag">Live Verification Terminal</span>
         </div>
         <span className="panel-status">
           Ping: <strong>{latency}ms</strong>
@@ -77,14 +77,14 @@ export default function LiveTerminalDemo() {
             <span className="dot dot-yellow" />
             <span className="dot dot-green" />
           </div>
-          <span className="terminal-title">stream // direct-sim</span>
+          <span className="terminal-title">stream // carrier-live</span>
           <button 
             type="button" 
             className="terminal-refresh-btn"
             onClick={() => handleSimulate(selectedService)}
-            title="Re-run simulation"
+            title="Check live gateway connection"
           >
-            ↻ Re-test
+            ↻ Ping Line
           </button>
         </div>
 

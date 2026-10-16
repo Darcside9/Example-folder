@@ -12,6 +12,13 @@ import {
   appwriteUpdateProfile,
   appwriteUpdatePassword
 } from './appwriteAuth';
+import { 
+  orderTigerSmsNumber, 
+  checkTigerSmsStatus, 
+  cancelTigerSmsActivation, 
+  finishTigerSmsActivation,
+  getPlatformsForCountry 
+} from './tigerSmsService';
 
 // Default / fallback services catalog matching Chris Shopper specification (25 USA Platforms)
 export const DEFAULT_SERVICES = [
@@ -223,49 +230,40 @@ export async function getUserLogOrders(userId) {
 }
 
 /**
- * Allocate a new virtual number line and deduct balance
+ * Allocate a real virtual number line from Tiger SMS API Carrier Gateway and deduct balance
  */
 export async function allocateNumberLine({ userId, service, country = 'us', currentBalance = 10 }) {
   if (currentBalance < service.price) {
     throw new Error(`Insufficient balance (${siteConfig.formatNaira(currentBalance)}). Service cost is ${siteConfig.formatNaira(service.price)}. Please top up on WhatsApp.`);
   }
 
-  const normCountry = String(country).toLowerCase();
-  const isUK = normCountry === 'uk' || normCountry === 'gb' || normCountry === '16' || normCountry.includes('kingdom');
-  const isCanada = normCountry === 'ca' || normCountry === 'canada' || normCountry === '36';
+  const normCountry = String(country).toUpperCase();
+  const isUK = normCountry === 'UK' || normCountry === 'GB' || normCountry === '16' || normCountry.includes('KINGDOM');
+  const isCanada = normCountry === 'CA' || normCountry === '36' || normCountry.includes('CANADA');
 
-  let phoneNumber = '';
-  let countryCode = 'US';
-  let countryName = 'United States';
-  let flag = '🇺🇸';
+  const countryId = isUK ? '16' : (isCanada ? '36' : '187');
+  const countryCode = isUK ? 'UK' : (isCanada ? 'CA' : 'US');
+  const countryName = isUK ? 'United Kingdom' : (isCanada ? 'Canada' : 'United States');
+  const flag = isUK ? '🇬🇧' : (isCanada ? '🇨🇦' : '🇺🇸');
 
-  if (isUK) {
-    const ukPrefixes = ['7700', '7800', '7911', '7400', '7500', '7900', '7300', '7100'];
-    const prefix = ukPrefixes[Math.floor(Math.random() * ukPrefixes.length)];
-    const rest = Math.floor(100000 + Math.random() * 899999);
-    phoneNumber = `+44 ${prefix} ${rest}`;
-    countryCode = 'UK';
-    countryName = 'United Kingdom';
-    flag = '🇬🇧';
-  } else if (isCanada) {
-    const caAreaCodes = ['416', '647', '514', '403', '604', '778', '905', '613', '438', '587'];
-    const areaCode = caAreaCodes[Math.floor(Math.random() * caAreaCodes.length)];
-    const mid = Math.floor(200 + Math.random() * 799);
-    const end = Math.floor(1000 + Math.random() * 8999);
-    phoneNumber = `+1 (${areaCode}) ${mid}-${end}`;
-    countryCode = 'CA';
-    countryName = 'Canada';
-    flag = '🇨🇦';
-  } else {
-    const usAreaCodes = ['415', '212', '312', '786', '650', '206', '512', '404', '305', '702'];
-    const areaCode = usAreaCodes[Math.floor(Math.random() * usAreaCodes.length)];
-    const mid = Math.floor(200 + Math.random() * 799);
-    const end = Math.floor(1000 + Math.random() * 8999);
-    phoneNumber = `+1 (${areaCode}) ${mid}-${end}`;
-    countryCode = 'US';
-    countryName = 'United States';
-    flag = '🇺🇸';
+  // Resolve Tiger SMS Service Code
+  const platforms = getPlatformsForCountry(countryCode);
+  const matchedPlat = platforms.find(p => 
+    p.id === service.id || 
+    (service.tigerCode && p.tigerCode === service.tigerCode) || 
+    (service.name && p.name.toLowerCase() === service.name.toLowerCase())
+  );
+  const serviceCode = matchedPlat?.tigerCode || service.tigerCode || service.id || 'ot';
+
+  // Request REAL Virtual Line from Tiger SMS API Carrier Gateway
+  const orderResult = await orderTigerSmsNumber({ serviceCode, countryId });
+  if (!orderResult.success) {
+    throw new Error(orderResult.message || `No carrier lines currently available for ${service.name}. Your balance was not charged.`);
   }
+
+  const activationId = orderResult.activationId;
+  const phoneNumber = orderResult.phoneNumber;
+  const rawNumber = orderResult.rawNumber;
 
   const newBalance = Number((currentBalance - service.price).toFixed(2));
 
@@ -284,7 +282,17 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
         reference: phoneNumber,
         price: service.price,
         status: 'pending',
-        details: JSON.stringify({ country: countryCode, countryName, flag, service: service.name, phoneNumber })
+        details: JSON.stringify({ 
+          country: countryCode, 
+          countryName, 
+          flag, 
+          service: service.name, 
+          phoneNumber,
+          activationId,
+          rawNumber,
+          serviceCode,
+          countryId
+        })
       }
     );
     orderId = doc.$id;
@@ -317,12 +325,16 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
   return {
     order: {
       id: orderId,
+      activation_id: activationId,
       user_id: userId,
       service_name: service.name,
+      service_code: serviceCode,
       country_code: countryCode,
       country_name: countryName,
       country_flag: flag,
+      country_id: countryId,
       phone_number: phoneNumber,
+      raw_number: rawNumber,
       cost: service.price,
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -333,36 +345,24 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
 }
 
 /**
- * Simulate SMS OTP arrival
- */
-export async function simulateSmsOtp(orderId) {
-  const code = Math.floor(100000 + Math.random() * 900000).toString();
-  const formattedCode = `${code.slice(0, 3)}-${code.slice(3)}`;
-  const messageBody = `Your Chris Shopper verification code is: ${formattedCode}. Never share this code with anyone.`;
-
-  try {
-    if (orderId && !orderId.startsWith('ord-')) {
-      await databases.updateDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.orders,
-        orderId,
-        { status: 'code_received' }
-      );
-    }
-  } catch (err) {
-    console.warn('Simulated SMS update notice:', err.message);
-  }
-
-  return {
-    code: formattedCode,
-    messageBody
-  };
-}
-
-/**
  * Cancel and Auto-Refund an active order (supports user cancellation or timeout)
  */
-export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalance, status = 'cancelled' }) {
+export async function cancelAndRefundOrder({ orderId, activationId, userId, cost, currentBalance, status = 'cancelled' }) {
+  // If order has an activationId with Tiger SMS, cancel activation on Tiger SMS
+  if (activationId) {
+    try {
+      const cancelRes = await cancelTigerSmsActivation(activationId);
+      if (!cancelRes.success && cancelRes.error === 'EARLY_CANCEL_DENIED') {
+        throw new Error(cancelRes.message || 'Carriers require a 2-minute connection window before cancellation. Please retry shortly.');
+      }
+    } catch (tigerErr) {
+      if (tigerErr.message && (tigerErr.message.includes('2-minute') || tigerErr.message.includes('EARLY_CANCEL_DENIED'))) {
+        throw tigerErr;
+      }
+      console.warn('Tiger SMS cancel activation note:', tigerErr.message);
+    }
+  }
+
   const newBalance = Number((currentBalance + Number(cost)).toFixed(2));
 
   try {
@@ -392,7 +392,7 @@ export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalan
     window.dispatchEvent(new CustomEvent('balance-updated', { detail: { balance: newBalance } }));
   } catch {}
 
-  return newBalance;
+  return { newBalance };
 }
 
 /**

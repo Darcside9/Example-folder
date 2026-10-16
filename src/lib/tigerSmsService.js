@@ -1114,3 +1114,181 @@ export async function fetchTigerBalance() {
     return 1.315;
   }
 }
+
+/**
+ * Format raw carrier phone number returned by Tiger SMS
+ * US/CA: +1 (XXX) XXX-XXXX
+ * UK: +44 7XXX XXXXXX
+ */
+export function formatTigerPhoneNumber(raw, countryId) {
+  if (!raw) return '';
+  const digits = String(raw).replace(/[^0-9]/g, '');
+  const normCountry = String(countryId).toUpperCase();
+
+  // UK (16)
+  if (normCountry === '16' || normCountry === 'UK' || normCountry === 'GB' || digits.startsWith('44')) {
+    let clean = digits;
+    if (clean.startsWith('44')) clean = clean.slice(2);
+    const prefix = clean.slice(0, 4);
+    const rest = clean.slice(4);
+    return `+44 ${prefix} ${rest}`;
+  }
+
+  // US (187) or Canada (36)
+  if (normCountry === '187' || normCountry === '36' || normCountry === 'US' || normCountry === 'CA' || digits.startsWith('1')) {
+    let clean = digits;
+    if (clean.startsWith('1') && clean.length === 11) clean = clean.slice(1);
+    if (clean.length === 10) {
+      return `+1 (${clean.slice(0, 3)}) ${clean.slice(3, 6)}-${clean.slice(6)}`;
+    }
+  }
+
+  return `+${digits}`;
+}
+
+/**
+ * Order a real dedicated virtual phone number from Tiger SMS API Carrier Gateway
+ * @param {string} serviceCode - Tiger SMS service code (e.g. 'wa', 'tg', 'lf', 'go')
+ * @param {string} countryId - Numeric country ID ('187' = US, '36' = CA, '16' = UK)
+ */
+export async function orderTigerSmsNumber({ serviceCode, countryId = '187' }) {
+  try {
+    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=getNumber&service=${serviceCode}&country=${countryId}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      throw new Error(`Carrier gateway HTTP error ${res.status}`);
+    }
+    const text = (await res.text()).trim();
+
+    // Success response format: ACCESS_NUMBER:<activationId>:<phoneNumber>
+    if (text.startsWith('ACCESS_NUMBER:')) {
+      const parts = text.split(':');
+      const activationId = parts[1];
+      const rawNumber = parts[2];
+      return {
+        success: true,
+        activationId,
+        rawNumber,
+        phoneNumber: formatTigerPhoneNumber(rawNumber, countryId),
+        countryId
+      };
+    }
+
+    if (text === 'NO_NUMBERS') {
+      return {
+        success: false,
+        error: 'NO_NUMBERS',
+        message: 'No carrier lines currently available in stock from wholesale gateway for this service. Please try again in a few moments.'
+      };
+    }
+
+    if (text === 'NO_BALANCE') {
+      return {
+        success: false,
+        error: 'NO_BALANCE',
+        message: 'Wholesale carrier gateway balance is temporarily low. Please contact admin.'
+      };
+    }
+
+    return {
+      success: false,
+      error: text,
+      message: `Carrier API response: ${text}`
+    };
+  } catch (err) {
+    console.error('Tiger SMS orderNumber error:', err);
+    return {
+      success: false,
+      error: 'NETWORK_ERROR',
+      message: `Connection error to carrier gateway: ${err.message}`
+    };
+  }
+}
+
+/**
+ * Check real-time status of an ongoing activation order on Tiger SMS
+ * @param {string} activationId
+ * Returns: { status: 'STATUS_OK', code } | { status: 'STATUS_WAIT_CODE' } | { status: 'STATUS_CANCEL' } | etc.
+ */
+export async function checkTigerSmsStatus(activationId) {
+  if (!activationId) return { status: 'NO_ACTIVATION' };
+  try {
+    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=getStatus&id=${activationId}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = (await res.text()).trim();
+
+    if (text.startsWith('STATUS_OK:')) {
+      const code = text.replace('STATUS_OK:', '').trim();
+      return {
+        status: 'STATUS_OK',
+        code,
+        message: text
+      };
+    }
+
+    if (text.startsWith('STATUS_WAIT_CODE')) {
+      return { status: 'STATUS_WAIT_CODE' };
+    }
+
+    if (text.startsWith('STATUS_CANCEL') || text.startsWith('ACCESS_CANCEL')) {
+      return { status: 'STATUS_CANCEL' };
+    }
+
+    if (text.startsWith('STATUS_WAIT_RESEND')) {
+      return { status: 'STATUS_WAIT_RESEND' };
+    }
+
+    return { status: text };
+  } catch (err) {
+    console.warn(`Tiger SMS checkStatus note for ${activationId}:`, err.message);
+    return { status: 'ERROR', error: err.message };
+  }
+}
+
+/**
+ * Cancel an ongoing activation on Tiger SMS Carrier Gateway (refunds wholesale cost)
+ * @param {string} activationId
+ */
+export async function cancelTigerSmsActivation(activationId) {
+  if (!activationId) return { success: false };
+  try {
+    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=setStatus&status=8&id=${activationId}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = (await res.text()).trim();
+
+    if (text === 'ACCESS_CANCEL') {
+      return { success: true, message: 'Carrier activation cancelled and wholesale cost refunded.' };
+    }
+
+    if (text === 'EARLY_CANCEL_DENIED') {
+      return {
+        success: false,
+        error: 'EARLY_CANCEL_DENIED',
+        message: 'Carriers require a 2-minute connection window before cancellation. Please retry shortly.'
+      };
+    }
+
+    return { success: text.includes('ACCESS'), message: text };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Confirm/Finish successful activation on Tiger SMS (status=6)
+ * @param {string} activationId
+ */
+export async function finishTigerSmsActivation(activationId) {
+  if (!activationId) return { success: false };
+  try {
+    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=setStatus&status=6&id=${activationId}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = (await res.text()).trim();
+    return { success: text.includes('ACCESS'), message: text };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}

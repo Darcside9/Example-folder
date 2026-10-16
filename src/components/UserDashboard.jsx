@@ -9,7 +9,6 @@ import {
   getUserProfile, 
   getUserOrders, 
   allocateNumberLine, 
-  simulateSmsOtp, 
   cancelAndRefundOrder,
   transferFunds,
   requestWhatsAppOtp,
@@ -229,12 +228,14 @@ export default function UserDashboard({ user, onSignOut }) {
   const handleConfirmRentLine = async (platform, country) => {
     setIsAllocatingLine(true);
     try {
-      showToast(`Allocating ${platform.name} (${country?.code || 'US'}) line...`);
+      showToast(`Connecting to carrier gateway for ${platform.name} (${country?.code || 'US'})...`);
       const { order, newBalance } = await allocateNumberLine({
         userId: user?.id || 'guest_user',
         service: {
           name: platform.name,
-          price: platform.price
+          price: platform.price,
+          tigerCode: platform.tigerCode,
+          id: platform.id
         },
         country: (country?.code || 'US').toLowerCase(),
         currentBalance: balance
@@ -247,7 +248,7 @@ export default function UserDashboard({ user, onSignOut }) {
       setIsOrderConfirmOpen(false);
       setActiveReceptionOrder(order);
       setIsReceptionModalOpen(true);
-      showToast(`✅ Allocated ${platform.name} line: ${order.phone_number}`);
+      showToast(`✅ Allocated real ${platform.name} carrier line: ${order.phone_number}`);
     } catch (err) {
       showToast(`❌ ${err.message}`);
     } finally {
@@ -260,83 +261,75 @@ export default function UserDashboard({ user, onSignOut }) {
     handleInitiatePlatformRent(service, { code: 'US', name: 'United States', flag: '🇺🇸', dialCode: '+1' });
   };
 
-  // Simulate Incoming SMS OTP (routes to live modal and active lines)
-  const handleSimulateSms = async (lineId) => {
-    showToast('📡 Routing simulated carrier SMS packet...');
-    const result = await simulateSmsOtp(lineId);
+  // Handle incoming SMS OTP received from live carrier
+  const handleSmsCodeReceived = (order, code, messageBody) => {
+    setActiveLines(prev => prev.map(l => l.id === order.id ? { 
+      ...l, 
+      status: 'code_received', 
+      sms_code: code, 
+      message_body: messageBody 
+    } : l));
 
-    setActiveLines(prev => prev.map(l => {
-      if (l.id === lineId) {
-        return {
-          ...l,
-          status: 'code_received',
-          sms_code: result.code,
-          message_body: result.messageBody
-        };
-      }
-      return l;
-    }));
+    setOrders(prev => prev.map(o => o.id === order.id ? { 
+      ...o, 
+      status: 'code_received', 
+      sms_code: code, 
+      message_body: messageBody 
+    } : o));
 
-    setOrders(prev => prev.map(o => {
-      if (o.id === lineId) {
-        return {
-          ...o,
-          status: 'code_received',
-          sms_code: result.code,
-          message_body: result.messageBody
-        };
-      }
-      return o;
-    }));
+    setActiveReceptionOrder(prev => (prev && prev.id === order.id ? { 
+      ...prev, 
+      status: 'code_received', 
+      sms_code: code, 
+      message_body: messageBody 
+    } : prev));
 
-    setActiveReceptionOrder(prev => {
-      if (prev && prev.id === lineId) {
-        return {
-          ...prev,
-          status: 'code_received',
-          sms_code: result.code,
-          message_body: result.messageBody
-        };
-      }
-      return prev;
-    });
-
-    showToast(`🎉 SMS Code Received: ${result.code}! Verification completed.`);
+    showToast(`🎉 Verification Code Received: ${code}!`);
   };
 
   // Cancel & Refund Line
   const handleCancelLine = async (line) => {
-    showToast('Cancelling line and issuing auto-refund...');
-    const newBal = await cancelAndRefundOrder({
-      orderId: line.id,
-      userId: user?.id || 'guest_user',
-      cost: Number(line.cost) || 250,
-      currentBalance: balance,
-      status: 'cancelled'
-    });
+    try {
+      showToast('Processing carrier line cancellation & auto-refund...');
+      const { newBalance } = await cancelAndRefundOrder({
+        orderId: line.id,
+        activationId: line.activation_id,
+        userId: user?.id || 'guest_user',
+        cost: Number(line.cost) || 0,
+        currentBalance: balance,
+        status: 'cancelled'
+      });
 
-    setBalance(newBal);
-    setActiveLines(prev => prev.filter(l => l.id !== line.id));
-    setOrders(prev => prev.map(o => o.id === line.id ? { ...o, status: 'refunded' } : o));
-    setActiveReceptionOrder(prev => prev && prev.id === line.id ? { ...prev, status: 'cancelled' } : prev);
-    showToast(`💰 Line cancelled. ${siteConfig.formatNaira(line.cost)} refunded to your balance.`);
+      setBalance(newBalance);
+      setActiveLines(prev => prev.filter(l => l.id !== line.id));
+      setOrders(prev => prev.map(o => o.id === line.id ? { ...o, status: 'cancelled' } : o));
+      setIsReceptionModalOpen(false);
+      showToast(`💰 Line cancelled. ${siteConfig.formatNaira(line.cost)} refunded to your balance.`);
+    } catch (err) {
+      showToast(`⚠️ ${err.message}`);
+    }
   };
 
   // 15-Minute Waiting Window Timeout & Auto-Refund
   const handleTimeoutLine = async (line) => {
-    const newBal = await cancelAndRefundOrder({
-      orderId: line.id,
-      userId: user?.id || 'guest_user',
-      cost: Number(line.cost) || 250,
-      currentBalance: balance,
-      status: 'timed_out'
-    });
+    try {
+      const { newBalance } = await cancelAndRefundOrder({
+        orderId: line.id,
+        activationId: line.activation_id,
+        userId: user?.id || 'guest_user',
+        cost: Number(line.cost) || 0,
+        currentBalance: balance,
+        status: 'timed_out'
+      });
 
-    setBalance(newBal);
-    setActiveLines(prev => prev.filter(l => l.id !== line.id));
-    setOrders(prev => prev.map(o => o.id === line.id ? { ...o, status: 'timed_out' } : o));
-    setActiveReceptionOrder(prev => prev && prev.id === line.id ? { ...prev, status: 'timed_out' } : prev);
-    showToast(`⏰ 15-minute window expired. ${siteConfig.formatNaira(line.cost)} automatically refunded to your balance.`);
+      setBalance(newBalance);
+      setActiveLines(prev => prev.filter(l => l.id !== line.id));
+      setOrders(prev => prev.map(o => o.id === line.id ? { ...o, status: 'timed_out' } : o));
+      setActiveReceptionOrder(prev => prev && prev.id === line.id ? { ...prev, status: 'timed_out' } : prev);
+      showToast(`⏰ 15-minute window expired. ${siteConfig.formatNaira(line.cost)} automatically refunded to your balance.`);
+    } catch (err) {
+      console.warn('Timeout refund note:', err.message);
+    }
   };
 
   // Handle Fund Transfer Submit
@@ -914,18 +907,6 @@ export default function UserDashboard({ user, onSignOut }) {
                                   >
                                     📡 Live
                                   </button>
-                                  {!hasCode && (
-                                    <button 
-                                      className="btn-simulate-tiny"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleSimulateSms(line.id);
-                                      }}
-                                      title="Simulate SMS Arrival for Test"
-                                    >
-                                      ⚡ OTP
-                                    </button>
-                                  )}
                                   <button 
                                     className="btn-cancel-tiny"
                                     onClick={(e) => {
@@ -1719,7 +1700,7 @@ export default function UserDashboard({ user, onSignOut }) {
         isOpen={isReceptionModalOpen}
         onClose={() => setIsReceptionModalOpen(false)}
         order={activeReceptionOrder}
-        onSimulateSms={handleSimulateSms}
+        onCodeReceived={handleSmsCodeReceived}
         onCancelOrder={handleCancelLine}
         onTimeoutOrder={handleTimeoutLine}
       />
