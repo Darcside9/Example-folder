@@ -329,7 +329,7 @@ export default function LogsMarketplace({
 
     const targetCategory = accountSelectModal.category;
     const targetSubType = accountSelectModal.subType;
-    const isHidden = isUsernameHiddenCategory(targetCategory?.id, targetCategory?.name);
+    const isHidden = isUsernameHiddenCategory(targetCategory?.id, targetCategory?.name, targetCategory);
 
     const items = accountSelectModal.selectedUsernames.map(username => {
       const acc = (targetSubType.accounts || []).find(a => a.username === username);
@@ -611,7 +611,7 @@ export default function LogsMarketplace({
                                   ? item.stockCount 
                                   : (item.accounts || []).filter(a => a.isAvailable !== false).length;
                                 const isSoldOut = itemStock === 0;
-                                const isHiddenCategory = isUsernameHiddenCategory(cat.id, cat.name);
+                                const isHiddenCategory = isUsernameHiddenCategory(cat.id, cat.name, cat);
 
                                 return (
                                   <div 
@@ -628,7 +628,9 @@ export default function LogsMarketplace({
                                     }}
                                     title={isSoldOut 
                                       ? `${cat.name} configuration is currently sold out` 
-                                      : `Click to view and select available ${cat.name} usernames`
+                                      : isHiddenCategory
+                                        ? `Click to order ${cat.name}`
+                                        : `Click to view and select available ${cat.name} usernames`
                                     }
                                   >
                                     {/* Top / Left Section: Icon & Full Description */}
@@ -659,7 +661,7 @@ export default function LogsMarketplace({
                                         </span>
                                       )}
                                       <span className={`accszone-choose-btn ${isSoldOut ? 'disabled' : ''}`}>
-                                        {isSoldOut ? 'Sold Out' : 'Choose Username →'}
+                                        {isSoldOut ? 'Sold Out' : (isHiddenCategory ? 'Order Now →' : 'Choose Username →')}
                                       </span>
                                     </div>
                                   </div>
@@ -702,7 +704,9 @@ export default function LogsMarketplace({
                 />
                 <div>
                   <h3 className="account-select-title">
-                    Choose Account Usernames
+                    {isUsernameHiddenCategory(accountSelectModal.category?.id, accountSelectModal.category?.name, accountSelectModal.category) 
+                      ? 'Select Order Quantity' 
+                      : 'Choose Account Usernames'}
                   </h3>
                   <p className="account-select-subtitle">
                     {accountSelectModal.subType.title}
@@ -730,7 +734,7 @@ export default function LogsMarketplace({
             </div>
 
             {/* Modal Body: Hidden Category Quantity Mode vs Username Selection Mode */}
-            {isUsernameHiddenCategory(accountSelectModal.category?.id, accountSelectModal.category?.name) ? (
+            {isUsernameHiddenCategory(accountSelectModal.category?.id, accountSelectModal.category?.name, accountSelectModal.category) ? (
               <div className="account-hidden-qty-box">
                 <div className="hidden-qty-stock-banner">
                   <div className="stock-banner-left">

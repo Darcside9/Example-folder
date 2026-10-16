@@ -258,7 +258,10 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
   // Request REAL Virtual Line from Tiger SMS API Carrier Gateway
   const orderResult = await orderTigerSmsNumber({ serviceCode, countryId });
   if (!orderResult.success) {
-    throw new Error(orderResult.message || `No carrier lines currently available for ${service.name}. Your balance was not charged.`);
+    const errorMsg = (orderResult.message || '').includes('<') 
+      ? `Carrier lines temporarily unavailable for ${service.name}. Your balance was not charged.`
+      : (orderResult.message || `No carrier lines currently available for ${service.name}. Your balance was not charged.`);
+    throw new Error(errorMsg);
   }
 
   const activationId = orderResult.activationId;

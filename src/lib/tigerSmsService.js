@@ -1097,16 +1097,58 @@ export async function fetchLiveTigerSmsRates(countryParam = '187') {
 /**
  * Fetch live account balance from Tiger SMS
  */
+/**
+ * Execute request to Tiger SMS API with automatic proxy routing and HTML sanitation
+ */
+export async function executeTigerApi(params) {
+  const queryStr = new URLSearchParams(params).toString();
+  // Try endpoints: primary Vercel rewrite/serverless, then Vite proxy path
+  const endpoints = [
+    `${TIGER_API_BASE}?${queryStr}`,
+    `/api/tiger?${queryStr}`
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await fetch(endpoint, {
+        headers: { Accept: 'text/plain, */*' }
+      });
+      if (!res.ok) continue;
+      const text = (await res.text()).trim();
+      
+      // If the response is HTML (e.g. index.html SPA rewrite or 404 page), ignore it and try next endpoint
+      if (text.startsWith('<!DOCTYPE') || text.includes('<html') || text.includes('<body') || text.includes('<div')) {
+        continue;
+      }
+      return { success: true, text };
+    } catch {
+      // Continue to next endpoint
+    }
+  }
+
+  return {
+    success: false,
+    text: '',
+    error: 'GATEWAY_UNAVAILABLE',
+    message: 'Carrier gateway is temporarily unreachable. Please retry shortly.'
+  };
+}
+
+/**
+ * Fetch live account balance from Tiger SMS
+ */
 export async function fetchTigerBalance() {
   try {
-    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=getBalance`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = await res.text();
-    // format: ACCESS_BALANCE:1.315
-    const match = text.match(/ACCESS_BALANCE:([0-9.]+)/i);
-    if (match && match[1]) {
-      return parseFloat(match[1]);
+    const res = await executeTigerApi({
+      api_key: TIGER_API_KEY,
+      action: 'getBalance'
+    });
+
+    if (res.success && res.text) {
+      const match = res.text.match(/ACCESS_BALANCE:([0-9.]+)/i);
+      if (match && match[1]) {
+        return parseFloat(match[1]);
+      }
     }
     return 1.315;
   } catch (err) {
@@ -1153,12 +1195,22 @@ export function formatTigerPhoneNumber(raw, countryId) {
  */
 export async function orderTigerSmsNumber({ serviceCode, countryId = '187' }) {
   try {
-    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=getNumber&service=${serviceCode}&country=${countryId}`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      throw new Error(`Carrier gateway HTTP error ${res.status}`);
+    const res = await executeTigerApi({
+      api_key: TIGER_API_KEY,
+      action: 'getNumber',
+      service: serviceCode,
+      country: countryId
+    });
+
+    if (!res.success) {
+      return {
+        success: false,
+        error: res.error,
+        message: res.message
+      };
     }
-    const text = (await res.text()).trim();
+
+    const text = res.text;
 
     // Success response format: ACCESS_NUMBER:<activationId>:<phoneNumber>
     if (text.startsWith('ACCESS_NUMBER:')) {
@@ -1190,10 +1242,12 @@ export async function orderTigerSmsNumber({ serviceCode, countryId = '187' }) {
       };
     }
 
+    const cleanMsg = text.includes('<') ? 'Carrier service temporarily unavailable. Please retry.' : text;
+
     return {
       success: false,
       error: text,
-      message: `Carrier API response: ${text}`
+      message: `Carrier API response: ${cleanMsg}`
     };
   } catch (err) {
     console.error('Tiger SMS orderNumber error:', err);
@@ -1213,10 +1267,17 @@ export async function orderTigerSmsNumber({ serviceCode, countryId = '187' }) {
 export async function checkTigerSmsStatus(activationId) {
   if (!activationId) return { status: 'NO_ACTIVATION' };
   try {
-    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=getStatus&id=${activationId}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = (await res.text()).trim();
+    const res = await executeTigerApi({
+      api_key: TIGER_API_KEY,
+      action: 'getStatus',
+      id: activationId
+    });
+
+    if (!res.success) {
+      return { status: 'ERROR', error: res.message };
+    }
+
+    const text = res.text;
 
     if (text.startsWith('STATUS_OK:')) {
       const code = text.replace('STATUS_OK:', '').trim();
@@ -1253,10 +1314,18 @@ export async function checkTigerSmsStatus(activationId) {
 export async function cancelTigerSmsActivation(activationId) {
   if (!activationId) return { success: false };
   try {
-    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=setStatus&status=8&id=${activationId}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = (await res.text()).trim();
+    const res = await executeTigerApi({
+      api_key: TIGER_API_KEY,
+      action: 'setStatus',
+      status: 8,
+      id: activationId
+    });
+
+    if (!res.success) {
+      return { success: false, error: res.message };
+    }
+
+    const text = res.text;
 
     if (text === 'ACCESS_CANCEL') {
       return { success: true, message: 'Carrier activation cancelled and wholesale cost refunded.' };
@@ -1283,10 +1352,18 @@ export async function cancelTigerSmsActivation(activationId) {
 export async function finishTigerSmsActivation(activationId) {
   if (!activationId) return { success: false };
   try {
-    const url = `${TIGER_API_BASE}?api_key=${TIGER_API_KEY}&action=setStatus&status=6&id=${activationId}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const text = (await res.text()).trim();
+    const res = await executeTigerApi({
+      api_key: TIGER_API_KEY,
+      action: 'setStatus',
+      status: 6,
+      id: activationId
+    });
+
+    if (!res.success) {
+      return { success: false, error: res.message };
+    }
+
+    const text = res.text;
     return { success: text.includes('ACCESS'), message: text };
   } catch (err) {
     return { success: false, error: err.message };

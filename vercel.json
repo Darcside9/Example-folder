@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/tiger/:path*",
+      "destination": "https://tiger-sms.com/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

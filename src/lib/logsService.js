@@ -221,7 +221,10 @@ export function getPlatformsCatalog(catalogData) {
  * Determine if an account category hides individual usernames from public browsing.
  * Applies to Textplus, VPN, Nigerian Facebook, and iCloud categories (stocks only).
  */
-export function isUsernameHiddenCategory(categoryId, categoryName) {
+export function isUsernameHiddenCategory(categoryId, categoryName, categoryObj = null) {
+  if (categoryObj && (categoryObj.hideUsernames || categoryObj.hide_usernames || categoryObj.hideUsername)) {
+    return true;
+  }
   const normalizedId = String(categoryId || '').toLowerCase();
   const normalizedName = String(categoryName || '').toLowerCase();
   return (
@@ -232,6 +235,8 @@ export function isUsernameHiddenCategory(categoryId, categoryName) {
     normalizedId.includes('nigeria') ||
     normalizedName.includes('nigeria') ||
     normalizedId.includes('icloud') ||
-    normalizedName.includes('icloud')
+    normalizedName.includes('icloud') ||
+    normalizedId.includes('apple') ||
+    normalizedName.includes('apple')
   );
 }

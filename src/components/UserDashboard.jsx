@@ -199,7 +199,11 @@ export default function UserDashboard({ user, onSignOut }) {
   }, [activeLines]);
 
   const showToast = (msg) => {
-    setToastMessage(msg);
+    let clean = typeof msg === 'string' ? msg : String(msg || '');
+    if (clean.includes('<html') || clean.includes('<!DOCTYPE') || clean.includes('<div') || clean.includes('<style') || clean.includes('style=')) {
+      clean = '⚠️ Connection error with carrier gateway. Please retry shortly.';
+    }
+    setToastMessage(clean);
     setTimeout(() => setToastMessage(null), 3500);
   };
 
@@ -250,7 +254,10 @@ export default function UserDashboard({ user, onSignOut }) {
       setIsReceptionModalOpen(true);
       showToast(`✅ Allocated real ${platform.name} carrier line: ${order.phone_number}`);
     } catch (err) {
-      showToast(`❌ ${err.message}`);
+      const errMsg = (err.message || '').includes('<') 
+        ? 'Carrier lines temporarily unavailable. Please retry in a few moments.'
+        : (err.message || 'Error connecting to carrier line');
+      showToast(`❌ ${errMsg}`);
     } finally {
       setIsAllocatingLine(false);
     }
