@@ -46,6 +46,24 @@ import {
   formatRelativeTime, 
   formatDateTime 
 } from '../lib/heartbeatService';
+import { 
+  getStoredDollarRate, 
+  fetchLiveDollarRate, 
+  saveDollarRate, 
+  subscribeToDollarRate, 
+  convertUsdToNgn, 
+  calculateProfit, 
+  formatUsd 
+} from '../lib/exchangeRateService';
+import { 
+  CORE_USA_PLATFORMS, 
+  CORE_CANADA_PLATFORMS,
+  CORE_UK_PLATFORMS,
+  SUPPORTED_REGIONS,
+  getPlatformsForCountry,
+  fetchLiveTigerSmsRates, 
+  fetchTigerBalance 
+} from '../lib/tigerSmsService';
 
 const SAMPLE_LOG_LINE = '61590748374787 | dv4WaXTqmkR3 | OQVZ ZBN2 SEHY TINT SWPA RL66 SZZK 4RWU | BrandeeOats60@outlook.com | qvli4Ham3';
 
@@ -72,6 +90,24 @@ export default function AdminDashboard({ onShowToast }) {
   const [newBalanceInput, setNewBalanceInput] = useState('');
   const [editingProductId, setEditingProductId] = useState(null);
   const [newProductPrice, setNewProductPrice] = useState('');
+
+  // -------------------------------------------------------------------------
+  // SMS NUMBERS & EXCHANGE RATE CONTROLLER STATES
+  // -------------------------------------------------------------------------
+  const [dollarRate, setDollarRate] = useState(getStoredDollarRate());
+  const [dollarRateInput, setDollarRateInput] = useState(String(getStoredDollarRate()));
+  const [isSavingDollarRate, setIsSavingDollarRate] = useState(false);
+  const [selectedNumberCountry, setSelectedNumberCountry] = useState('US'); // 'US' | 'CA' | 'UK'
+  const [tigerPlatforms, setTigerPlatforms] = useState(CORE_USA_PLATFORMS);
+  const [tigerBalance, setTigerBalance] = useState(1.315);
+  const [loadingTigerRates, setLoadingTigerRates] = useState(false);
+  const [numbersSearch, setNumbersSearch] = useState('');
+  const [numbersCategory, setNumbersCategory] = useState('all');
+  const [editingNumberId, setEditingNumberId] = useState(null);
+  const [editingNumberPrice, setEditingNumberPrice] = useState('');
+  const [bulkProfitAmount, setBulkProfitAmount] = useState('1000');
+  const [bulkMarginPct, setBulkMarginPct] = useState('50');
+  const [isApplyingBulk, setIsApplyingBulk] = useState(false);
 
   // Heartbeat & Database Keep-Alive State
   const [heartbeat, setHeartbeat] = useState(null);
@@ -333,16 +369,29 @@ export default function AdminDashboard({ onShowToast }) {
     return () => window.removeEventListener('platforms-updated', handlePlatformsUpdated);
   }, []);
 
-  // Load registered users and live Appwrite pricing
+  // Load registered users, live Appwrite pricing, and Tiger SMS rates
   useEffect(() => {
     async function loadData() {
       try {
-        const [usrData, priceData] = await Promise.all([
+        const [usrData, priceData, liveRate, tigerRes, balanceVal] = await Promise.all([
           adminGetAllUsers(),
-          fetchLivePricing()
+          fetchLivePricing(),
+          fetchLiveDollarRate(),
+          fetchLiveTigerSmsRates('187'),
+          fetchTigerBalance()
         ]);
         setUsers(usrData || []);
         setPricingProducts(priceData || []);
+        if (liveRate) {
+          setDollarRate(liveRate);
+          setDollarRateInput(String(liveRate));
+        }
+        if (tigerRes?.platforms) {
+          setTigerPlatforms(tigerRes.platforms);
+        }
+        if (typeof balanceVal === 'number') {
+          setTigerBalance(balanceVal);
+        }
       } catch (err) {
         console.error('Error loading admin data:', err);
       }
@@ -351,12 +400,19 @@ export default function AdminDashboard({ onShowToast }) {
     loadHeartbeat();
 
     // Subscribe to live pricing updates
-    const unsubscribe = subscribeToPricingUpdates((updatedList) => {
+    const unsubscribePricing = subscribeToPricingUpdates((updatedList) => {
       setPricingProducts(updatedList);
     });
 
+    // Subscribe to live dollar rate updates
+    const unsubscribeDollar = subscribeToDollarRate((newRate) => {
+      setDollarRate(newRate);
+      setDollarRateInput(String(newRate));
+    });
+
     return () => {
-      if (unsubscribe) unsubscribe();
+      if (unsubscribePricing) unsubscribePricing();
+      if (unsubscribeDollar) unsubscribeDollar();
     };
   }, []);
 
@@ -811,6 +867,201 @@ export default function AdminDashboard({ onShowToast }) {
     }
   };
 
+  // -------------------------------------------------------------------------
+  // SMS NUMBERS & EXCHANGE RATE HANDLERS
+  // -------------------------------------------------------------------------
+  const handleSaveDollarRate = async (e) => {
+    if (e) e.preventDefault();
+    setIsSavingDollarRate(true);
+    try {
+      const num = parseFloat(dollarRateInput);
+      if (isNaN(num) || num <= 0) {
+        toast('Please enter a valid dollar exchange rate (e.g. 1600).');
+        setIsSavingDollarRate(false);
+        return;
+      }
+      await saveDollarRate(num);
+      setDollarRate(num);
+      toast(`💵 Global Dollar Rate saved: 1 USD = ₦${num.toLocaleString()} NGN. Applied site-wide!`);
+    } catch (err) {
+      toast(`Error saving dollar rate: ${err.message}`);
+    } finally {
+      setIsSavingDollarRate(false);
+    }
+  };
+
+  const handleSelectNumberCountry = (countryCode) => {
+    setSelectedNumberCountry(countryCode);
+    const countryPlats = getPlatformsForCountry(countryCode);
+    setTigerPlatforms(countryPlats);
+    setNumbersSearch('');
+    setNumbersCategory('all');
+    setEditingNumberId(null);
+  };
+
+  const handleRefreshTigerRates = async () => {
+    setLoadingTigerRates(true);
+    try {
+      const countryParam = selectedNumberCountry === 'UK' ? '16' : (selectedNumberCountry === 'CA' ? '36' : '187');
+      const [res, bal] = await Promise.all([
+        fetchLiveTigerSmsRates(countryParam),
+        fetchTigerBalance()
+      ]);
+      if (res.success) {
+        setTigerPlatforms(res.platforms);
+        toast(`✅ Live wholesale rates refreshed from Tiger SMS API for ${selectedNumberCountry === 'UK' ? 'United Kingdom' : (selectedNumberCountry === 'CA' ? 'Canada' : 'USA')}!`);
+      } else {
+        toast(`⚠️ Refreshed with verified wholesale snapshot (${res.error || 'Network OK'})`);
+      }
+      if (typeof bal === 'number') {
+        setTigerBalance(bal);
+      }
+    } catch (err) {
+      toast(`Failed to refresh API rates: ${err.message}`);
+    } finally {
+      setLoadingTigerRates(false);
+    }
+  };
+
+  const handleSaveNumberRetailPrice = async (platformId) => {
+    try {
+      const numericPrice = parseFloat(editingNumberPrice);
+      if (isNaN(numericPrice) || numericPrice <= 0) {
+        toast('Please enter a valid final retail price in Naira.');
+        return;
+      }
+
+      const docKey = selectedNumberCountry === 'UK' ? 'uk_' + platformId : (selectedNumberCountry === 'CA' ? 'ca_' + platformId : platformId);
+      const existingDoc = pricingProducts.find(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + platformId)) && p.product_type === 'sms_service');
+      const countryPlatforms = getPlatformsForCountry(selectedNumberCountry);
+      const platformInfo = countryPlatforms.find(p => p.id === platformId);
+      const targetId = existingDoc?.$id || docKey;
+
+      await adminUpdateProductPrice(targetId, {
+        price_usd: numericPrice,
+        is_active: existingDoc ? existingDoc.is_active : true,
+        carrier_speed: existingDoc?.carrier_speed || platformInfo?.carrierSpeed || '< 4s'
+      });
+
+      setPricingProducts((prev) => {
+        const exists = prev.some(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + platformId)) && p.product_type === 'sms_service');
+        if (exists) {
+          return prev.map(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + platformId)) && p.product_type === 'sms_service' ? { ...p, price_usd: numericPrice } : p);
+        }
+        return [...prev, {
+          $id: targetId,
+          product_id: docKey,
+          name: (selectedNumberCountry === 'UK' ? '[UK] ' : (selectedNumberCountry === 'CA' ? '[CA] ' : '')) + (platformInfo?.name || platformId),
+          category: platformInfo?.category || 'messaging',
+          product_type: 'sms_service',
+          price_usd: numericPrice,
+          is_active: true,
+          carrier_speed: platformInfo?.carrierSpeed || '< 4s'
+        }];
+      });
+
+      setEditingNumberId(null);
+      setEditingNumberPrice('');
+      toast(`✅ Updated ${platformInfo?.name || platformId} (${selectedNumberCountry}) final retail price to ${siteConfig.formatNaira(numericPrice)}!`);
+    } catch (err) {
+      console.error('Error saving number retail price:', err);
+      toast(`❌ Error saving price: ${err.message}`);
+    }
+  };
+
+  const handleToggleNumberStatus = async (platformId, currentStatus) => {
+    try {
+      const docKey = selectedNumberCountry === 'UK' ? 'uk_' + platformId : (selectedNumberCountry === 'CA' ? 'ca_' + platformId : platformId);
+      const existingDoc = pricingProducts.find(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + platformId)) && p.product_type === 'sms_service');
+      const countryPlatforms = getPlatformsForCountry(selectedNumberCountry);
+      const platformInfo = countryPlatforms.find(p => p.id === platformId);
+      const targetId = existingDoc?.$id || docKey;
+      const newStatus = !currentStatus;
+
+      await adminUpdateProductPrice(targetId, {
+        price_usd: existingDoc ? existingDoc.price_usd : (platformInfo?.defaultRetailNgn || 1000),
+        is_active: newStatus,
+        carrier_speed: existingDoc?.carrier_speed || platformInfo?.carrierSpeed || '< 4s'
+      });
+
+      setPricingProducts((prev) => {
+        const exists = prev.some(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + platformId)) && p.product_type === 'sms_service');
+        if (exists) {
+          return prev.map(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + platformId)) && p.product_type === 'sms_service' ? { ...p, is_active: newStatus } : p);
+        }
+        return [...prev, {
+          $id: targetId,
+          product_id: docKey,
+          name: (selectedNumberCountry === 'UK' ? '[UK] ' : (selectedNumberCountry === 'CA' ? '[CA] ' : '')) + (platformInfo?.name || platformId),
+          category: platformInfo?.category || 'messaging',
+          product_type: 'sms_service',
+          price_usd: platformInfo?.defaultRetailNgn || 1000,
+          is_active: newStatus,
+          carrier_speed: platformInfo?.carrierSpeed || '< 4s'
+        }];
+      });
+      toast(`${platformInfo?.name || platformId} (${selectedNumberCountry}) is now ${newStatus ? '🟢 Live in Marketplace' : '⚪ Paused'}`);
+    } catch (err) {
+      toast(`Error updating status: ${err.message}`);
+    }
+  };
+
+  const handleApplyBulkMarkup = async (type, value) => {
+    setIsApplyingBulk(true);
+    try {
+      const freshPrices = [...pricingProducts];
+      const targetPlatforms = getPlatformsForCountry(selectedNumberCountry);
+      let count = 0;
+
+      for (const plat of targetPlatforms) {
+        const wholesaleUsd = plat.defaultUsd;
+        const wholesaleNgn = Math.round(wholesaleUsd * dollarRate);
+        let finalRetailNgn;
+
+        if (type === 'flat') {
+          finalRetailNgn = Math.round(wholesaleNgn + Number(value));
+        } else if (type === 'percent') {
+          finalRetailNgn = Math.round(wholesaleNgn * (1 + Number(value) / 100));
+        }
+
+        // Round up to clean nearest 10 Naira
+        finalRetailNgn = Math.ceil(finalRetailNgn / 10) * 10;
+
+        const docKey = selectedNumberCountry === 'UK' ? 'uk_' + plat.id : (selectedNumberCountry === 'CA' ? 'ca_' + plat.id : plat.id);
+        const existingDoc = freshPrices.find(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + plat.id)) && p.product_type === 'sms_service');
+        const targetId = existingDoc?.$id || docKey;
+
+        await adminUpdateProductPrice(targetId, {
+          price_usd: finalRetailNgn,
+          is_active: existingDoc ? existingDoc.is_active : true,
+          carrier_speed: plat.carrierSpeed
+        });
+        count++;
+      }
+
+      const reloaded = await fetchLivePricing();
+      setPricingProducts(reloaded);
+      toast(`🚀 Applied ${type === 'flat' ? `+₦${Number(value).toLocaleString()} profit` : `+${value}% margin`} to all ${count} ${selectedNumberCountry} platforms!`);
+    } catch (err) {
+      console.error('Error in bulk markup:', err);
+      toast(`Error applying bulk markup: ${err.message}`);
+    } finally {
+      setIsApplyingBulk(false);
+    }
+  };
+
+  const filteredNumbersList = useMemo(() => {
+    return tigerPlatforms.filter(plat => {
+      const matchesSearch = !numbersSearch || 
+        plat.name.toLowerCase().includes(numbersSearch.toLowerCase()) || 
+        plat.tigerCode.toLowerCase().includes(numbersSearch.toLowerCase()) ||
+        plat.category.toLowerCase().includes(numbersSearch.toLowerCase());
+
+      const matchesCat = numbersCategory === 'all' || plat.category === numbersCategory;
+      return matchesSearch && matchesCat;
+    });
+  }, [tigerPlatforms, numbersSearch, numbersCategory]);
+
   // Group pricing products into SMS and Logs
   const smsServices = useMemo(() => {
     return pricingProducts.filter(p => p.product_type === 'sms_service');
@@ -1195,10 +1446,17 @@ export default function AdminDashboard({ onShowToast }) {
         </button>
         <button 
           type="button" 
+          className={`dash-tab-btn ${activeTab === 'numbers' ? 'active' : ''}`}
+          onClick={() => setActiveTab('numbers')}
+        >
+          📱 SMS Numbers &amp; Rates ({selectedNumberCountry === 'UK' ? '🇬🇧 UK' : (selectedNumberCountry === 'CA' ? '🇨🇦 Canada' : '🇺🇸 USA')})
+        </button>
+        <button 
+          type="button" 
           className={`dash-tab-btn ${activeTab === 'pricing' ? 'active' : ''}`}
           onClick={() => setActiveTab('pricing')}
         >
-          ⚙️ Dynamic Pricing Controller ({pricingProducts.length})
+          ⚙️ Logs Pricing Controller ({logProducts.length})
         </button>
         <button 
           type="button" 
@@ -2357,10 +2615,581 @@ export default function AdminDashboard({ onShowToast }) {
       )}
 
       {/* =========================================================================
+          TAB: SMS NUMBERS & CARRIER PRICING CONTROLLER (TIGER SMS & DOLLAR RATE)
+          ========================================================================= */}
+      {activeTab === 'numbers' && (
+        <div className="dashboard-tab-content numbers-pricing-section">
+          {/* 0. Country Switcher Pills Bar */}
+          <div className="numbers-country-tabs-bar" style={{ display: 'flex', gap: '12px', marginBottom: '20px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`btn ${selectedNumberCountry === 'US' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => handleSelectNumberCountry('US')}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', fontWeight: 600 }}
+            >
+              <span style={{ fontSize: '1.25rem' }}>🇺🇸</span>
+              <span>United States (+1)</span>
+              <span className="badge-pill" style={{ background: selectedNumberCountry === 'US' ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.72rem' }}>
+                25 Services
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`btn ${selectedNumberCountry === 'CA' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => handleSelectNumberCountry('CA')}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', fontWeight: 600 }}
+            >
+              <span style={{ fontSize: '1.25rem' }}>🇨🇦</span>
+              <span>Canada (+1)</span>
+              <span className="badge-pill" style={{ background: selectedNumberCountry === 'CA' ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.72rem' }}>
+                25 Services
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`btn ${selectedNumberCountry === 'UK' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => handleSelectNumberCountry('UK')}
+              style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', fontWeight: 600 }}
+            >
+              <span style={{ fontSize: '1.25rem' }}>🇬🇧</span>
+              <span>United Kingdom (+44)</span>
+              <span className="badge-pill" style={{ background: selectedNumberCountry === 'UK' ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.72rem' }}>
+                25 Services
+              </span>
+            </button>
+          </div>
+
+          {/* 1. Tiger SMS Live Gateway Status Banner */}
+          <div className="tiger-gateway-banner">
+            <div className="tiger-gateway-info">
+              <h3>
+                <span>📱 Tiger SMS API Carrier Gateway</span>
+                <span className="status-pill pill-active">🟢 Active &amp; Connected</span>
+              </h3>
+              <p>
+                Connected to live wholesale carrier pool. Default wholesale USD prices are queried directly from the Tiger SMS API for {selectedNumberCountry === 'UK' ? 'UK (ID 16)' : (selectedNumberCountry === 'CA' ? 'Canada (ID 36)' : 'USA (ID 187)')}. Convert to Naira using the Dollar Rate below, set your retail margins, and dispense to the marketplace.
+              </p>
+            </div>
+            <div className="tiger-gateway-badges">
+              <div className="tiger-stat-pill balance">
+                <span>💰 Wholesale Balance:</span>
+                <strong>${tigerBalance.toFixed(3)} USD</strong>
+              </div>
+              <div className="tiger-stat-pill active">
+                <span>{selectedNumberCountry === 'UK' ? '🇬🇧 Region:' : (selectedNumberCountry === 'CA' ? '🇨🇦 Region:' : '🇺🇸 Region:')}</span>
+                <strong>{selectedNumberCountry === 'UK' ? 'UK (+44) Physical SIMs' : (selectedNumberCountry === 'CA' ? 'Canada (+1) Physical SIMs' : 'USA (+1) Physical SIMs')}</strong>
+              </div>
+              <button 
+                type="button" 
+                className="btn-refresh-tiger" 
+                onClick={handleRefreshTigerRates}
+                disabled={loadingTigerRates}
+                title="Refresh live wholesale rates and stock from Tiger SMS"
+              >
+                <span>{loadingTigerRates ? '🔄 Syncing...' : '🔄 Refresh API Rates'}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Global Dollar (USD to NGN) Exchange Rate Controller Card */}
+          <div className="dash-table-card dollar-rate-card">
+            <div className="dash-table-header">
+              <h3>💵 Global Dollar (USD to NGN) Exchange Rate Controller</h3>
+              <p>
+                Define the official Dollar Rate used across the entire platform. When updated here, it saves to Appwrite Cloud and converts Tiger SMS wholesale costs into Naira site-wide in real-time.
+              </p>
+            </div>
+
+            <div className="dollar-rate-content">
+              <form onSubmit={handleSaveDollarRate} className="dollar-rate-row">
+                <div className="dollar-rate-input-group">
+                  <span className="dollar-rate-label">Global Exchange Rate:</span>
+                  <div className="dollar-rate-field-wrap">
+                    <span className="dollar-rate-field-prefix">₦</span>
+                    <input 
+                      type="number" 
+                      step="1"
+                      min="1"
+                      className="dollar-rate-input" 
+                      value={dollarRateInput} 
+                      onChange={(e) => setDollarRateInput(e.target.value)}
+                      placeholder="1600"
+                    />
+                  </div>
+                  <span className="dollar-rate-suffix">NGN per $1.00 USD</span>
+                </div>
+
+                <button 
+                  type="submit" 
+                  className="btn-save-dollar" 
+                  disabled={isSavingDollarRate}
+                >
+                  {isSavingDollarRate ? 'Saving...' : '💾 Save Global Dollar Rate'}
+                </button>
+              </form>
+
+              {/* Conversion Preview Strip */}
+              <div className="dollar-rate-examples">
+                <span style={{ color: '#fbbf24', fontWeight: 700 }}>Conversion Guide:</span>
+                <div className="rate-example-item">
+                  <span>$1.00 USD =</span>
+                  <strong>₦{dollarRate.toLocaleString()} NGN</strong>
+                </div>
+                <span>•</span>
+                <div className="rate-example-item">
+                  <span>$0.040 USD (TikTok) =</span>
+                  <strong>₦{(0.04 * dollarRate).toFixed(1)} NGN</strong>
+                </div>
+                <span>•</span>
+                <div className="rate-example-item">
+                  <span>$0.250 USD (Telegram) =</span>
+                  <strong>₦{(0.25 * dollarRate).toFixed(1)} NGN</strong>
+                </div>
+                <span>•</span>
+                <div className="rate-example-item">
+                  <span>$0.356 USD (WhatsApp) =</span>
+                  <strong>₦{(0.356 * dollarRate).toFixed(1)} NGN</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Quick Profit Margin & Bulk Pricing Assistant Card */}
+          <div className="margin-assistant-card">
+            <div className="margin-assistant-header">
+              <h4>
+                <span>⚡ Quick Profit Margin Assistant</span>
+                <span className="badge-pill" style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8' }}>
+                  Auto-Calculates Final Retail Prices
+                </span>
+              </h4>
+              <p>
+                Apply a uniform profit markup on top of the wholesale Naira cost across all 25 {selectedNumberCountry === 'UK' ? 'United Kingdom' : (selectedNumberCountry === 'CA' ? 'Canada' : 'USA')} platforms, or edit any platform individually in the table below.
+              </p>
+            </div>
+
+            <div className="margin-tools-row">
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Quick Markups:</span>
+              <button 
+                type="button" 
+                className="margin-chip-btn"
+                disabled={isApplyingBulk}
+                onClick={() => handleApplyBulkMarkup('flat', 500)}
+              >
+                +₦500 Flat Profit
+              </button>
+              <button 
+                type="button" 
+                className="margin-chip-btn"
+                disabled={isApplyingBulk}
+                onClick={() => handleApplyBulkMarkup('flat', 1000)}
+              >
+                +₦1,000 Flat Profit
+              </button>
+              <button 
+                type="button" 
+                className="margin-chip-btn"
+                disabled={isApplyingBulk}
+                onClick={() => handleApplyBulkMarkup('flat', 1500)}
+              >
+                +₦1,500 Flat Profit
+              </button>
+              <button 
+                type="button" 
+                className="margin-chip-btn"
+                disabled={isApplyingBulk}
+                onClick={() => handleApplyBulkMarkup('percent', 50)}
+              >
+                +50% Margin
+              </button>
+              <button 
+                type="button" 
+                className="margin-chip-btn"
+                disabled={isApplyingBulk}
+                onClick={() => handleApplyBulkMarkup('percent', 80)}
+              >
+                +80% Margin
+              </button>
+              <button 
+                type="button" 
+                className="margin-chip-btn"
+                disabled={isApplyingBulk}
+                onClick={() => handleApplyBulkMarkup('percent', 100)}
+              >
+                +100% Margin (2x Wholesale)
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Live Verification Platforms Pricing & Dispenser Table */}
+          <div className="dash-table-card">
+            <div className="dash-table-header">
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', width: '100%' }}>
+                <div>
+                  <h3>📱 {selectedNumberCountry === 'UK' ? 'United Kingdom (+44)' : (selectedNumberCountry === 'CA' ? 'Canada (+1)' : 'USA (+1)')} Verification Platforms &amp; Marketplace Dispenser (25 Services)</h3>
+                  <p>
+                    Default wholesale prices come directly from Tiger SMS API in USD for {selectedNumberCountry === 'UK' ? 'United Kingdom (country ID 16)' : (selectedNumberCountry === 'CA' ? 'Canada (country ID 36)' : 'USA (country ID 187)')}. Final price in Naira is what is dispensed to the public marketplace.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input 
+                    type="text" 
+                    placeholder="Search platform or code..." 
+                    className="inline-input"
+                    style={{ width: '220px', padding: '6px 12px' }}
+                    value={numbersSearch}
+                    onChange={(e) => setNumbersSearch(e.target.value)}
+                  />
+                  {numbersSearch && (
+                    <button type="button" className="btn-tiny-cancel" onClick={() => setNumbersSearch('')}>✕</button>
+                  )}
+                </div>
+              </div>
+
+              {/* Category Filter Pills */}
+              <div className="inventory-subtypes-bar" style={{ marginTop: '16px', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {['all', 'messaging', 'social', 'tech', 'dating', 'finance', 'entertainment', 'other'].map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    className={`subtype-pill ${numbersCategory === cat ? 'active' : ''}`}
+                    onClick={() => setNumbersCategory(cat)}
+                  >
+                    {cat === 'all' ? 'All Platforms (25)' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="table-responsive numbers-desktop-table-wrap">
+              <table className="dash-table">
+                <thead>
+                  <tr>
+                    <th>Platform / Brand</th>
+                    <th>Wholesale (USD) [API]</th>
+                    <th>Wholesale (NGN) [@ ₦{dollarRate}/$]</th>
+                    <th>Final Retail Price (NGN) [Marketplace]</th>
+                    <th>Profit Margin</th>
+                    <th>Available Pool</th>
+                    <th>Marketplace Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredNumbersList.map((plat) => {
+                    const docKey = selectedNumberCountry === 'UK' ? 'uk_' + plat.id : (selectedNumberCountry === 'CA' ? 'ca_' + plat.id : plat.id);
+                    const pricingDoc = pricingProducts.find(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + plat.id)) && p.product_type === 'sms_service');
+                    const retailNgn = pricingDoc ? Number(pricingDoc.price_usd) : plat.defaultRetailNgn;
+                    const isActive = pricingDoc ? pricingDoc.is_active : true;
+                    const wholesaleUsd = plat.defaultUsd;
+                    const wholesaleNgn = Math.round(wholesaleUsd * dollarRate * 100) / 100;
+                    const profitInfo = calculateProfit(retailNgn, wholesaleNgn);
+                    const isEditing = editingNumberId === plat.id;
+
+                    return (
+                      <tr key={plat.id}>
+                        {/* 1. Platform & Tiger Code */}
+                        <td>
+                          <div className="numbers-table-service-col">
+                            <BrandIcon iconKey={plat.icon} name={plat.name} size={30} />
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <strong>{plat.name}</strong>
+                                <span className="numbers-code-badge">{plat.tigerCode}</span>
+                              </div>
+                              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                                {plat.category} • Speed {plat.carrierSpeed}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* 2. Wholesale USD (from API) */}
+                        <td>
+                          <span className="wholesale-usd-text">{formatUsd(wholesaleUsd)}</span>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Tiger default</div>
+                        </td>
+
+                        {/* 3. Wholesale NGN (converted) */}
+                        <td>
+                          <span className="wholesale-ngn-text">
+                            ₦{wholesaleNgn.toLocaleString('en-NG', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                          </span>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Converted cost</div>
+                        </td>
+
+                        {/* 4. Final Retail Price in Naira (Marketplace Dispenser) */}
+                        <td>
+                          {isEditing ? (
+                            <div className="inline-edit-row">
+                              <span style={{ color: '#38bdf8', fontWeight: 700 }}>₦</span>
+                              <input 
+                                type="number" 
+                                step="10" 
+                                min="50"
+                                value={editingNumberPrice} 
+                                onChange={(e) => setEditingNumberPrice(e.target.value)}
+                                className="inline-input"
+                                style={{ width: '100px' }}
+                                autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveNumberRetailPrice(plat.id);
+                                  if (e.key === 'Escape') setEditingNumberId(null);
+                                }}
+                              />
+                              <button 
+                                type="button" 
+                                className="btn-tiny-save" 
+                                onClick={() => handleSaveNumberRetailPrice(plat.id)}
+                              >
+                                Save
+                              </button>
+                              <button 
+                                type="button" 
+                                className="btn-tiny-cancel" 
+                                onClick={() => setEditingNumberId(null)}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span className="retail-price-dispenser">{siteConfig.formatNaira(retailNgn)}</span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* 5. Profit Margin */}
+                        <td>
+                          {profitInfo.isProfitable ? (
+                            <span className="badge-profit" title="Net profit per verification">
+                              +{siteConfig.formatNaira(profitInfo.profitNgn)} (+{profitInfo.marginPct}%)
+                            </span>
+                          ) : (
+                            <span className="badge-loss" title="Warning: Selling below wholesale cost!">
+                              ⚠️ -{siteConfig.formatNaira(Math.abs(profitInfo.profitNgn))} (LOSS)
+                            </span>
+                          )}
+                        </td>
+
+                        {/* 6. Stock Pool */}
+                        <td>
+                          <span className="numbers-stock-text">
+                            {plat.stock ? `${plat.stock.toLocaleString()} lines` : 'In Stock'}
+                          </span>
+                        </td>
+
+                        {/* 7. Marketplace Status */}
+                        <td>
+                          <button
+                            type="button"
+                            className={`status-pill ${isActive ? 'pill-active' : 'pill-soon'}`}
+                            style={{ cursor: 'pointer', border: 'none' }}
+                            onClick={() => handleToggleNumberStatus(plat.id, isActive)}
+                            title="Click to toggle live marketplace visibility"
+                          >
+                            {isActive ? '🟢 Live in Market' : '⚪ Paused'}
+                          </button>
+                        </td>
+
+                        {/* 8. Actions */}
+                        <td>
+                          <div className="admin-actions-row">
+                            {!isEditing && (
+                              <button 
+                                type="button" 
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => {
+                                  setEditingNumberId(plat.id);
+                                  setEditingNumberPrice(String(retailNgn));
+                                }}
+                              >
+                                Edit Rate
+                              </button>
+                            )}
+                            <button 
+                              type="button" 
+                              className={`btn btn-sm ${isActive ? 'btn-secondary' : 'btn-primary'}`}
+                              onClick={() => handleToggleNumberStatus(plat.id, isActive)}
+                            >
+                              {isActive ? 'Pause' : 'Activate'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Responsive Cards (Visible on screens <= 768px) */}
+            <div className="numbers-mobile-cards-wrap">
+              {filteredNumbersList.map((plat) => {
+                const docKey = selectedNumberCountry === 'UK' ? 'uk_' + plat.id : (selectedNumberCountry === 'CA' ? 'ca_' + plat.id : plat.id);
+                const pricingDoc = pricingProducts.find(p => (p.product_id === docKey || (selectedNumberCountry === 'US' && p.product_id === 'us_' + plat.id)) && p.product_type === 'sms_service');
+                const retailNgn = pricingDoc ? Number(pricingDoc.price_usd) : plat.defaultRetailNgn;
+                const isActive = pricingDoc ? pricingDoc.is_active : true;
+                const wholesaleUsd = plat.defaultUsd;
+                const wholesaleNgn = Math.round(wholesaleUsd * dollarRate * 100) / 100;
+                const profitInfo = calculateProfit(retailNgn, wholesaleNgn);
+                const isEditing = editingNumberId === plat.id;
+
+                return (
+                  <div key={plat.id} className={`numbers-mobile-card ${!isActive ? 'card-paused' : ''}`}>
+                    <div className="num-card-top">
+                      <div className="num-card-brand">
+                        <BrandIcon iconKey={plat.icon} name={plat.name} size={32} />
+                        <div>
+                          <div className="num-card-name-row">
+                            <span className="num-card-title">{plat.name}</span>
+                            <span className="numbers-code-badge">{plat.tigerCode}</span>
+                          </div>
+                          <span className="num-card-category">{plat.category} • {plat.carrierSpeed}</span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className={`status-pill ${isActive ? 'pill-active' : 'pill-soon'}`}
+                        style={{ cursor: 'pointer', border: 'none' }}
+                        onClick={() => handleToggleNumberStatus(plat.id, isActive)}
+                        title="Toggle marketplace visibility"
+                      >
+                        {isActive ? '🟢 Live' : '⚪ Paused'}
+                      </button>
+                    </div>
+
+                    <div className="num-card-metrics-grid">
+                      <div className="num-metric-box">
+                        <span className="num-metric-lbl">Wholesale (USD)</span>
+                        <span className="wholesale-usd-text">{formatUsd(wholesaleUsd)}</span>
+                        <span className="num-metric-sub">Tiger default</span>
+                      </div>
+
+                      <div className="num-metric-box">
+                        <span className="num-metric-lbl">Wholesale (NGN)</span>
+                        <span className="wholesale-ngn-text">
+                          ₦{wholesaleNgn.toLocaleString('en-NG', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                        </span>
+                        <span className="num-metric-sub">@ ₦{dollarRate}/$</span>
+                      </div>
+
+                      <div className="num-metric-box highlight">
+                        <span className="num-metric-lbl">Retail Price (Market)</span>
+                        {isEditing ? (
+                          <div className="inline-edit-row" style={{ marginTop: '4px' }}>
+                            <span style={{ color: '#38bdf8', fontWeight: 700 }}>₦</span>
+                            <input 
+                              type="number" 
+                              step="10" 
+                              min="50"
+                              value={editingNumberPrice} 
+                              onChange={(e) => setEditingNumberPrice(e.target.value)}
+                              className="inline-input"
+                              style={{ width: '85px', padding: '4px 6px' }}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSaveNumberRetailPrice(plat.id);
+                                if (e.key === 'Escape') setEditingNumberId(null);
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <span className="retail-price-dispenser">{siteConfig.formatNaira(retailNgn)}</span>
+                        )}
+                        <span className="num-metric-sub">Dispensed to users</span>
+                      </div>
+
+                      <div className="num-metric-box">
+                        <span className="num-metric-lbl">Net Profit / Margin</span>
+                        {profitInfo.isProfitable ? (
+                          <span className="badge-profit" style={{ fontSize: '0.76rem', padding: '2px 8px' }}>
+                            +{siteConfig.formatNaira(profitInfo.profitNgn)} (+{profitInfo.marginPct}%)
+                          </span>
+                        ) : (
+                          <span className="badge-loss" style={{ fontSize: '0.76rem', padding: '2px 8px' }}>
+                            ⚠️ -{siteConfig.formatNaira(Math.abs(profitInfo.profitNgn))}
+                          </span>
+                        )}
+                        <span className="num-metric-sub">{profitInfo.isProfitable ? 'Profit per line' : 'Selling at loss!'}</span>
+                      </div>
+                    </div>
+
+                    <div className="num-card-footer">
+                      <div className="num-card-stock">
+                        <span className="num-stock-dot"></span>
+                        <span>{plat.stock ? `${plat.stock.toLocaleString()} lines pool` : 'In Stock'}</span>
+                      </div>
+
+                      <div className="num-card-actions">
+                        {isEditing ? (
+                          <>
+                            <button 
+                              type="button" 
+                              className="btn btn-primary btn-sm"
+                              onClick={() => handleSaveNumberRetailPrice(plat.id)}
+                            >
+                              Save
+                            </button>
+                            <button 
+                              type="button" 
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => setEditingNumberId(null)}
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button 
+                              type="button" 
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => {
+                                setEditingNumberId(plat.id);
+                                setEditingNumberPrice(String(retailNgn));
+                              }}
+                            >
+                              Edit Rate
+                            </button>
+                            <button 
+                              type="button" 
+                              className={`btn btn-sm ${isActive ? 'btn-secondary' : 'btn-primary'}`}
+                              onClick={() => handleToggleNumberStatus(plat.id, isActive)}
+                            >
+                              {isActive ? 'Pause' : 'Activate'}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
           TAB 3: DYNAMIC SERVICES & PRICING CONTROLLER (APPWRITE CLOUD)
           ========================================================================= */}
       {activeTab === 'pricing' && (
         <div className="dashboard-tab-content">
+          <div className="tiger-gateway-banner" style={{ marginBottom: '24px' }}>
+            <div className="tiger-gateway-info">
+              <h3>📱 SMS Numbers &amp; Carrier Rates Management</h3>
+              <p>
+                Looking to manage live Tiger SMS wholesale prices, USD exchange rate, and profit margins for verification numbers? We have a dedicated section!
+              </p>
+            </div>
+            <button 
+              type="button" 
+              className="btn btn-primary"
+              onClick={() => setActiveTab('numbers')}
+            >
+              Open 📱 SMS Numbers &amp; Rates ({tigerPlatforms.length}) ➔
+            </button>
+          </div>
           <div className="dash-table-card" style={{ marginBottom: '24px' }}>
             <div className="dash-table-header">
               <h3>📱 Physical SIM Carrier Rates (SMS Verification)</h3>

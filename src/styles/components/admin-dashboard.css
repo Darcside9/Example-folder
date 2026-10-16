@@ -2666,5 +2666,572 @@ tr.row-invalid td {
   }
 }
 
+/* ==========================================================================
+   SMS NUMBERS & CARRIER PRICING CONTROLLER (TIGER SMS & DOLLAR RATE)
+   ========================================================================== */
+
+.numbers-pricing-section {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Tiger Gateway Header Banner */
+.tiger-gateway-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(14, 165, 233, 0.03) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+}
+
+.tiger-gateway-info h3 {
+  margin: 0 0 6px 0;
+  font-size: 1.25rem;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.tiger-gateway-info p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-secondary);
+  max-width: 680px;
+}
+
+.tiger-gateway-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.tiger-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.tiger-stat-pill.active {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+
+.tiger-stat-pill.balance {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: rgba(251, 191, 36, 0.08);
+  color: #fbbf24;
+}
+
+.btn-refresh-tiger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-refresh-tiger:hover:not(:disabled) {
+  background: rgba(56, 189, 248, 0.22);
+  border-color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.btn-refresh-tiger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Dollar Exchange Rate Controller Card */
+.dollar-rate-card {
+  background: linear-gradient(145deg, var(--bg-surface-elevated) 0%, rgba(30, 41, 59, 0.8) 100%);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(251, 191, 36, 0.15);
+}
+
+.dollar-rate-content {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dollar-rate-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.dollar-rate-input-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.dollar-rate-label {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+
+.dollar-rate-field-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.dollar-rate-field-prefix {
+  position: absolute;
+  left: 14px;
+  color: #fbbf24;
+  font-weight: 800;
+  font-size: 1.15rem;
+  pointer-events: none;
+}
+
+.dollar-rate-input {
+  width: 170px;
+  background: var(--bg-main);
+  border: 2px solid rgba(251, 191, 36, 0.5);
+  border-radius: var(--radius-md);
+  padding: 10px 14px 10px 34px;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fbbf24;
+  font-family: var(--font-mono, monospace);
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.dollar-rate-input:focus {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.2);
+}
+
+.dollar-rate-suffix {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.btn-save-dollar {
+  background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  color: #000;
+  font-weight: 800;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 10px 20px;
+  font-size: 0.92rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+  transition: all 0.2s ease;
+}
+
+.btn-save-dollar:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(245, 158, 11, 0.4);
+}
+
+.dollar-rate-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.rate-example-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rate-example-item strong {
+  color: #38bdf8;
+  font-family: var(--font-mono, monospace);
+}
+
+/* Margin Assistant Card */
+.margin-assistant-card {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+}
+
+.margin-assistant-header {
+  margin-bottom: 14px;
+}
+
+.margin-assistant-header h4 {
+  margin: 0 0 4px 0;
+  font-size: 1.05rem;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.margin-assistant-header p {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+
+.margin-tools-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.margin-chip-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.margin-chip-btn:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.4);
+  color: #38bdf8;
+  transform: translateY(-1px);
+}
+
+.margin-chip-btn.active {
+  background: rgba(56, 189, 248, 0.25);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
+
+/* Numbers Table Elements */
+.numbers-table-service-col {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.numbers-code-badge {
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-family: var(--font-mono, monospace);
+  font-weight: 700;
+}
+
+.badge-profit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+}
+
+.badge-loss {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 0.82rem;
+  font-weight: 800;
+  font-family: var(--font-mono, monospace);
+  animation: pulse-loss 2s infinite ease-in-out;
+}
+
+@keyframes pulse-loss {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+  }
+}
+
+.wholesale-usd-text {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #94a3b8;
+  font-family: var(--font-mono, monospace);
+}
+
+.wholesale-ngn-text {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #cbd5e1;
+  font-family: var(--font-mono, monospace);
+}
+
+.retail-price-dispenser {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #38bdf8;
+  font-family: var(--font-mono, monospace);
+}
+
+.numbers-stock-text {
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+}
+
+/* Desktop vs Mobile display toggles */
+.numbers-desktop-table-wrap {
+  display: block;
+}
+
+.numbers-mobile-cards-wrap {
+  display: none;
+}
+
+/* Mobile Responsive Cards Styling */
+.numbers-mobile-card {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  transition: all 0.2s ease;
+}
+
+.numbers-mobile-card.card-paused {
+  opacity: 0.7;
+  border-style: dashed;
+}
+
+.num-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.num-card-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.num-card-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.num-card-title {
+  font-size: 0.96rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.num-card-category {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.num-card-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.num-metric-box {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.num-metric-box.highlight {
+  background: rgba(56, 189, 248, 0.06);
+  border-color: rgba(56, 189, 248, 0.25);
+}
+
+.num-metric-lbl {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.num-metric-sub {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+.num-card-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.num-card-stock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono, monospace);
+}
+
+.num-stock-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+}
+
+.num-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.num-card-actions button {
+  padding: 6px 12px;
+  font-size: 0.78rem;
+}
+
+@media (max-width: 768px) {
+  .numbers-desktop-table-wrap {
+    display: none !important;
+  }
+
+  .numbers-mobile-cards-wrap {
+    display: flex !important;
+    flex-direction: column;
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  .dollar-rate-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dollar-rate-input-group {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dollar-rate-input {
+    width: 100%;
+  }
+
+  .btn-save-dollar {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tiger-gateway-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tiger-gateway-badges {
+    justify-content: flex-start;
+  }
+
+  .dollar-rate-examples {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .inventory-subtypes-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .inventory-subtypes-bar::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .subtype-pill {
+    flex-shrink: 0;
+  }
+
+  .margin-tools-row {
+    overflow-x: auto;
+    flex-wrap: nowrap !important;
+    padding-bottom: 8px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .margin-chip-btn {
+    flex-shrink: 0;
+  }
+}
+
 
 

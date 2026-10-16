@@ -36,16 +36,29 @@ export async function fetchLivePricing() {
       return await seedDefaultPricing();
     }
 
-    return res.documents.map(d => ({
-      $id: d.$id,
-      product_id: d.product_id,
-      name: d.name,
-      category: d.category,
-      product_type: d.product_type,
-      price_usd: Number(d.price_usd),
-      is_active: d.is_active,
-      carrier_speed: d.carrier_speed
-    }));
+    // Cache dollar exchange rate if present in pricing collection
+    const rateDoc = res.documents.find(d => d.product_id === 'usd_exchange_rate');
+    if (rateDoc && !isNaN(Number(rateDoc.price_usd))) {
+      try {
+        localStorage.setItem('cs_usd_to_ngn_rate', String(rateDoc.price_usd));
+      } catch {
+        // Ignore
+      }
+    }
+
+    // Filter out internal system settings so only actual products are returned
+    return res.documents
+      .filter(d => d.product_type !== 'system_setting')
+      .map(d => ({
+        $id: d.$id,
+        product_id: d.product_id,
+        name: d.name,
+        category: d.category,
+        product_type: d.product_type,
+        price_usd: Number(d.price_usd),
+        is_active: d.is_active,
+        carrier_speed: d.carrier_speed
+      }));
   } catch (err) {
     console.warn('Appwrite pricing read fallback to defaults:', err.message);
     return DEFAULT_PRODUCT_PRICING;
@@ -80,8 +93,9 @@ export async function adminUpdateProductPrice(docIdOrProductId, updates) {
   try {
     // Check if passed string is a document ID
     let targetDocId = docIdOrProductId;
+    let existingDoc = null;
     
-    // If passed a product_id (e.g. 'facebook'), look up document
+    // If passed a product_id (e.g. 'ca_whatsapp'), look up document
     if (!targetDocId.startsWith('6') || targetDocId.length < 15) {
       const query = await databases.listDocuments(
         APPWRITE_CONFIG.databaseId,
@@ -90,6 +104,7 @@ export async function adminUpdateProductPrice(docIdOrProductId, updates) {
       );
       if (query.documents[0]) {
         targetDocId = query.documents[0].$id;
+        existingDoc = query.documents[0];
       }
     }
 
@@ -98,14 +113,32 @@ export async function adminUpdateProductPrice(docIdOrProductId, updates) {
     if (updates.is_active !== undefined) payload.is_active = Boolean(updates.is_active);
     if (updates.carrier_speed !== undefined) payload.carrier_speed = updates.carrier_speed;
 
-    const updated = await databases.updateDocument(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.products_pricing,
-      targetDocId,
-      payload
-    );
-
-    return { success: true, updated };
+    if (existingDoc || (targetDocId.startsWith('6') && targetDocId.length >= 15)) {
+      const updated = await databases.updateDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.products_pricing,
+        targetDocId,
+        payload
+      );
+      return { success: true, updated };
+    } else {
+      // Create new document in products_pricing if not present yet
+      const created = await databases.createDocument(
+        APPWRITE_CONFIG.databaseId,
+        APPWRITE_CONFIG.collections.products_pricing,
+        ID.unique(),
+        {
+          product_id: docIdOrProductId,
+          name: updates.name || docIdOrProductId,
+          category: updates.category || 'messaging',
+          product_type: updates.product_type || 'sms_service',
+          price_usd: Number(updates.price_usd || 1000),
+          is_active: updates.is_active !== undefined ? Boolean(updates.is_active) : true,
+          carrier_speed: updates.carrier_speed || '< 3s'
+        }
+      );
+      return { success: true, updated: created };
+    }
   } catch (err) {
     console.error('Error updating product price in Appwrite:', err);
     throw err;

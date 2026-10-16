@@ -20,7 +20,13 @@ import {
 } from '../lib/dashboardService';
 import { siteConfig } from '../data/siteConfig';
 import LogsMarketplace from './LogsMarketplace';
+import BrandIcon from './BrandIcon';
 import { getPurchasedLogs, fetchUserPurchasedLogs, downloadCredentialsFile, getLogExpiryInfo } from '../lib/logsService';
+import { subscribeToPricingUpdates, fetchLivePricing } from '../lib/pricingService';
+import { subscribeToDollarRate } from '../lib/exchangeRateService';
+import SmsCountry3DSelector from './SmsCountry3DSelector';
+import SmsOrderConfirmModal from './SmsOrderConfirmModal';
+import SmsReceptionModal from './SmsReceptionModal';
 
 export default function UserDashboard({ user, onSignOut }) {
   const navigate = useNavigate();
@@ -40,8 +46,15 @@ export default function UserDashboard({ user, onSignOut }) {
   const [revealedPasswords, setRevealedPasswords] = useState({});
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [serviceFilter, setServiceFilter] = useState('all'); // 'all' | 'active'
+  const [serviceFilter, setServiceFilter] = useState('all');
   const [selectedServiceForRent, setSelectedServiceForRent] = useState(null);
+  const [pricingProducts, setPricingProducts] = useState([]);
+  const [selectedPlatformToBuy, setSelectedPlatformToBuy] = useState(null);
+  const [selectedCountryToBuy, setSelectedCountryToBuy] = useState(null);
+  const [isOrderConfirmOpen, setIsOrderConfirmOpen] = useState(false);
+  const [isAllocatingLine, setIsAllocatingLine] = useState(false);
+  const [activeReceptionOrder, setActiveReceptionOrder] = useState(null);
+  const [isReceptionModalOpen, setIsReceptionModalOpen] = useState(false);
 
   // Settings & Security States
   const [newPhone, setNewPhone] = useState('');
@@ -103,14 +116,18 @@ export default function UserDashboard({ user, onSignOut }) {
     async function loadData() {
       setLoading(true);
       try {
-        const [srvs, profile, userOrders, userLogs] = await Promise.all([
+        const [srvs, profile, userOrders, userLogs, livePricing] = await Promise.all([
           getServices(),
           user?.id ? getUserProfile(user.id) : null,
           user?.id ? getUserOrders(user.id) : [],
-          user?.id ? fetchUserPurchasedLogs(user.id) : getPurchasedLogs(user?.id)
+          user?.id ? fetchUserPurchasedLogs(user.id) : getPurchasedLogs(user?.id),
+          fetchLivePricing()
         ]);
 
         setServices(srvs);
+        if (Array.isArray(livePricing)) {
+          setPricingProducts(livePricing);
+        }
         if (profile?.balance !== undefined) {
           setBalance(Number(profile.balance));
         }
@@ -129,6 +146,38 @@ export default function UserDashboard({ user, onSignOut }) {
       }
     }
     loadData();
+
+    // Subscribe to live pricing updates from Appwrite
+    const unsubscribePricing = subscribeToPricingUpdates(async (freshPricingList) => {
+      try {
+        if (Array.isArray(freshPricingList)) {
+          setPricingProducts(freshPricingList);
+        } else {
+          const freshPrices = await fetchLivePricing();
+          setPricingProducts(freshPrices);
+        }
+        const freshSrvs = await getServices();
+        setServices(freshSrvs);
+      } catch (err) {
+        console.warn('Realtime service pricing refresh note:', err);
+      }
+    });
+
+    // Subscribe to live dollar rate changes
+    const unsubscribeDollar = subscribeToDollarRate(async () => {
+      try {
+        const [freshSrvs, freshPrices] = await Promise.all([getServices(), fetchLivePricing()]);
+        setServices(freshSrvs);
+        setPricingProducts(freshPrices);
+      } catch (err) {
+        console.warn('Realtime dollar rate change refresh note:', err);
+      }
+    });
+
+    return () => {
+      if (unsubscribePricing) unsubscribePricing();
+      if (unsubscribeDollar) unsubscribeDollar();
+    };
   }, [user]);
 
   // 2. Countdown Timer Loop for Active Lines
@@ -170,26 +219,24 @@ export default function UserDashboard({ user, onSignOut }) {
     });
   }, [services, searchQuery, serviceFilter]);
 
-  // Handle Rent Service
-  const handleRentService = async (service) => {
-    if (!service.is_active) {
-      // Direct WhatsApp request for inactive service
-      const waUrl = siteConfig.getWhatsAppSupportUrl(`Hi Chris Shopper, I would like to request activation for the service: ${service.name}`);
-      window.open(waUrl, '_blank');
-      return;
-    }
+  // 3D Marketplace Rent Handlers
+  const handleInitiatePlatformRent = (platform, country) => {
+    setSelectedPlatformToBuy(platform);
+    setSelectedCountryToBuy(country);
+    setIsOrderConfirmOpen(true);
+  };
 
-    if (balance < service.price) {
-      setShowTopUpModal(true);
-      return;
-    }
-
+  const handleConfirmRentLine = async (platform, country) => {
+    setIsAllocatingLine(true);
     try {
-      showToast(`Allocating ${service.name} number line...`);
+      showToast(`Allocating ${platform.name} (${country?.code || 'US'}) line...`);
       const { order, newBalance } = await allocateNumberLine({
         userId: user?.id || 'guest_user',
-        service,
-        country: 'us',
+        service: {
+          name: platform.name,
+          price: platform.price
+        },
+        country: (country?.code || 'US').toLowerCase(),
         currentBalance: balance
       });
 
@@ -197,17 +244,24 @@ export default function UserDashboard({ user, onSignOut }) {
       order._localCreatedAt = Date.now();
       setActiveLines(prev => [order, ...prev]);
       setOrders(prev => [order, ...prev]);
-      showToast(`✅ Allocated ${service.name} line: ${order.phone_number}`);
+      setIsOrderConfirmOpen(false);
+      setActiveReceptionOrder(order);
+      setIsReceptionModalOpen(true);
+      showToast(`✅ Allocated ${platform.name} line: ${order.phone_number}`);
     } catch (err) {
       showToast(`❌ ${err.message}`);
+    } finally {
+      setIsAllocatingLine(false);
     }
   };
 
-  // Simulate Incoming SMS OTP
-  const handleSimulateSms = async (lineId) => {
-    const target = activeLines.find(l => l.id === lineId);
-    if (!target) return;
+  // Legacy handleRentService compatibility
+  const handleRentService = async (service) => {
+    handleInitiatePlatformRent(service, { code: 'US', name: 'United States', flag: '🇺🇸', dialCode: '+1' });
+  };
 
+  // Simulate Incoming SMS OTP (routes to live modal and active lines)
+  const handleSimulateSms = async (lineId) => {
     showToast('📡 Routing simulated carrier SMS packet...');
     const result = await simulateSmsOtp(lineId);
 
@@ -223,22 +277,66 @@ export default function UserDashboard({ user, onSignOut }) {
       return l;
     }));
 
-    showToast(`📩 OTP Received: ${result.code}`);
+    setOrders(prev => prev.map(o => {
+      if (o.id === lineId) {
+        return {
+          ...o,
+          status: 'code_received',
+          sms_code: result.code,
+          message_body: result.messageBody
+        };
+      }
+      return o;
+    }));
+
+    setActiveReceptionOrder(prev => {
+      if (prev && prev.id === lineId) {
+        return {
+          ...prev,
+          status: 'code_received',
+          sms_code: result.code,
+          message_body: result.messageBody
+        };
+      }
+      return prev;
+    });
+
+    showToast(`🎉 SMS Code Received: ${result.code}! Verification completed.`);
   };
 
   // Cancel & Refund Line
   const handleCancelLine = async (line) => {
+    showToast('Cancelling line and issuing auto-refund...');
     const newBal = await cancelAndRefundOrder({
       orderId: line.id,
       userId: user?.id || 'guest_user',
       cost: Number(line.cost) || 250,
-      currentBalance: balance
+      currentBalance: balance,
+      status: 'cancelled'
     });
 
     setBalance(newBal);
     setActiveLines(prev => prev.filter(l => l.id !== line.id));
     setOrders(prev => prev.map(o => o.id === line.id ? { ...o, status: 'refunded' } : o));
+    setActiveReceptionOrder(prev => prev && prev.id === line.id ? { ...prev, status: 'cancelled' } : prev);
     showToast(`💰 Line cancelled. ${siteConfig.formatNaira(line.cost)} refunded to your balance.`);
+  };
+
+  // 15-Minute Waiting Window Timeout & Auto-Refund
+  const handleTimeoutLine = async (line) => {
+    const newBal = await cancelAndRefundOrder({
+      orderId: line.id,
+      userId: user?.id || 'guest_user',
+      cost: Number(line.cost) || 250,
+      currentBalance: balance,
+      status: 'timed_out'
+    });
+
+    setBalance(newBal);
+    setActiveLines(prev => prev.filter(l => l.id !== line.id));
+    setOrders(prev => prev.map(o => o.id === line.id ? { ...o, status: 'timed_out' } : o));
+    setActiveReceptionOrder(prev => prev && prev.id === line.id ? { ...prev, status: 'timed_out' } : prev);
+    showToast(`⏰ 15-minute window expired. ${siteConfig.formatNaira(line.cost)} automatically refunded to your balance.`);
   };
 
   // Handle Fund Transfer Submit
@@ -683,91 +781,12 @@ export default function UserDashboard({ user, onSignOut }) {
                 </ul>
               </div>
 
-              {/* Available Services Card */}
-              <div className="services-catalog-panel">
-                <h3 className="services-panel-heading">Available Services</h3>
-
-                {/* Search Bar & Category Filter Pills */}
-                <div className="services-search-row">
-                  <div className="services-filter-pills">
-                    <button 
-                      type="button" 
-                      className={`btn-service-filter ${serviceFilter === 'all' ? 'active' : ''}`}
-                      onClick={() => setServiceFilter('all')}
-                    >
-                      All
-                    </button>
-                    <button 
-                      type="button" 
-                      className={`btn-service-filter ${serviceFilter === 'active' ? 'active' : ''}`}
-                      onClick={() => setServiceFilter('active')}
-                    >
-                      ⚡ Active
-                    </button>
-                  </div>
-                  <div className="service-search-input-box">
-                    <input 
-                      type="text"
-                      placeholder="Search service (e.g. Telegram, WhatsApp)..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    <button className="btn-search-icon" type="button" aria-label="Search">
-                      <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24">
-                        <circle cx="11" cy="11" r="8"/>
-                        <path d="M21 21l-4.35-4.35"/>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Services Table */}
-                <div className="services-table-wrapper">
-                  <table className="services-catalog-table">
-                    <thead>
-                      <tr>
-                        <th className="th-service">SERVICE</th>
-                        <th className="th-retail">Retail</th>
-                        <th className="th-wholesale">Wholesale</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredServices.map(srv => {
-                        const isActive = srv.is_active;
-                        return (
-                          <tr 
-                            key={srv.id} 
-                            className={`service-tr-row ${isActive ? 'service-row-active' : 'service-row-soon'}`}
-                            onClick={() => handleRentService(srv)}
-                            title={isActive ? `Rent ${srv.name} (${siteConfig.formatNaira(srv.price)})` : 'Service Coming Soon / Request on WhatsApp'}
-                          >
-                            <td className="td-service-name">
-                              <span className={`srv-indicator-dot ${isActive ? 'active' : 'inactive'}`}></span>
-                              <strong>{srv.name}</strong>
-                              {!isActive && <span className="tag-soon-tiny">SOON</span>}
-                            </td>
-                            <td className="td-retail-price">
-                              {srv.retailPrice ? <span className="retail-strike">Retail Price: {siteConfig.formatNaira(srv.retailPrice)}</span> : '-'}
-                            </td>
-                            <td className="td-wholesale-price">
-                              <span className={isActive ? 'price-active-bold' : 'price-soon-sub'}>
-                                {siteConfig.formatNaira(srv.price)}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                      {filteredServices.length === 0 && (
-                        <tr>
-                          <td colSpan="3" className="no-services-found">
-                            No services matching "{searchQuery}"
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              {/* 3D Dropdown & Stack Country Selector (US, CA, UK) */}
+              <SmsCountry3DSelector
+                pricingProducts={pricingProducts}
+                onSelectPlatform={handleInitiatePlatformRent}
+                currentUserBalance={balance}
+              />
             </div>
 
             {/* ---------------- RIGHT COLUMN: Rented Numbers & Active Rentals ---------------- */}
@@ -829,7 +848,16 @@ export default function UserDashboard({ user, onSignOut }) {
                           const hasCode = line.status === 'code_received' && line.sms_code;
 
                           return (
-                            <tr key={line.id} className="active-rental-row">
+                            <tr 
+                              key={line.id} 
+                              className="active-rental-row"
+                              onClick={() => {
+                                setActiveReceptionOrder(line);
+                                setIsReceptionModalOpen(true);
+                              }}
+                              style={{ cursor: 'pointer' }}
+                              title="Click to view live SMS reception window"
+                            >
                               <td className="font-mono text-muted">#{line.id.toString().slice(-5)}</td>
                               <td>
                                 <span className="rental-srv-badge">{line.service_name}</span>
@@ -839,7 +867,10 @@ export default function UserDashboard({ user, onSignOut }) {
                                   <span>{line.phone_number}</span>
                                   <button 
                                     className="btn-cell-copy"
-                                    onClick={() => copyToClipboard(line.phone_number, 'Phone Number')}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      copyToClipboard(line.phone_number, 'Phone Number');
+                                    }}
                                     title="Copy Number"
                                   >
                                     Copy
@@ -852,7 +883,10 @@ export default function UserDashboard({ user, onSignOut }) {
                                     <span className="code-bold-green">{line.sms_code}</span>
                                     <button 
                                       className="btn-cell-copy-otp"
-                                      onClick={() => copyToClipboard(line.sms_code, 'OTP Code')}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        copyToClipboard(line.sms_code, 'OTP Code');
+                                      }}
                                     >
                                       Copy Code
                                     </button>
@@ -868,18 +902,36 @@ export default function UserDashboard({ user, onSignOut }) {
                               <td className="font-mono time-timer-cell">{timeRemaining}</td>
                               <td>
                                 <div className="rental-actions-group">
+                                  <button 
+                                    className="btn-simulate-tiny"
+                                    style={{ background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveReceptionOrder(line);
+                                      setIsReceptionModalOpen(true);
+                                    }}
+                                    title="Open Live Carrier SMS Reception Window"
+                                  >
+                                    📡 Live
+                                  </button>
                                   {!hasCode && (
                                     <button 
                                       className="btn-simulate-tiny"
-                                      onClick={() => handleSimulateSms(line.id)}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSimulateSms(line.id);
+                                      }}
                                       title="Simulate SMS Arrival for Test"
                                     >
-                                      ⚡ Simulate
+                                      ⚡ OTP
                                     </button>
                                   )}
                                   <button 
                                     className="btn-cancel-tiny"
-                                    onClick={() => handleCancelLine(line)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCancelLine(line);
+                                    }}
                                     title="Cancel and Refund"
                                   >
                                     ✕ Cancel
@@ -1649,6 +1701,28 @@ export default function UserDashboard({ user, onSignOut }) {
           </div>
         </div>
       )}
+
+      {/* ====================================================================
+          3D SMS ORDER CONFIRMATION & LIVE CARRIER RECEPTION MODALS
+          ==================================================================== */}
+      <SmsOrderConfirmModal
+        isOpen={isOrderConfirmOpen}
+        onClose={() => setIsOrderConfirmOpen(false)}
+        service={selectedPlatformToBuy}
+        country={selectedCountryToBuy}
+        userBalance={balance}
+        onConfirm={handleConfirmRentLine}
+        isAllocating={isAllocatingLine}
+      />
+
+      <SmsReceptionModal
+        isOpen={isReceptionModalOpen}
+        onClose={() => setIsReceptionModalOpen(false)}
+        order={activeReceptionOrder}
+        onSimulateSms={handleSimulateSms}
+        onCancelOrder={handleCancelLine}
+        onTimeoutOrder={handleTimeoutLine}
+      />
 
       {/* ====================================================================
           FLOATING WHATSAPP SUPPORT ICON (BOTTOM RIGHT)

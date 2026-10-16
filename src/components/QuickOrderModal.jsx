@@ -250,7 +250,7 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
               )}
 
               <div className="active-service-notice">
-                <span>🟢 Active Instant Lines: <strong>Telegram</strong> &amp; <strong>WhatsApp</strong></span>
+                <span>🇺🇸 <strong>United States Physical Carrier Lines</strong> • 25 Platforms Available Now</span>
               </div>
 
               <div className="modal-form-group">
@@ -260,33 +260,35 @@ export default function QuickOrderModal({ isOpen, onClose, initialPlan, onOrderS
                   onChange={(e) => setSelectedPlanId(e.target.value)}
                   className="modal-select"
                 >
-                  <optgroup label="Active Available Services">
+                  <optgroup label="🇺🇸 Active USA Carrier Services (25)">
                     {pricingPlans.filter((p) => p.isActive).map((p) => (
                       <option key={p.id} value={p.id}>
                         🟢 {p.title} — {p.price} (Instant Non-VoIP)
                       </option>
                     ))}
                   </optgroup>
-                  <optgroup label="Coming Soon (Pre-release)">
-                    {pricingPlans.filter((p) => !p.isActive).map((p) => (
-                      <option key={p.id} value={p.id} disabled>
-                        ⏳ {p.title} — Coming Soon
-                      </option>
-                    ))}
-                  </optgroup>
+                  {pricingPlans.some((p) => !p.isActive) && (
+                    <optgroup label="Coming Soon (Pre-release)">
+                      {pricingPlans.filter((p) => !p.isActive).map((p) => (
+                        <option key={p.id} value={p.id} disabled>
+                          ⏳ {p.title} — Coming Soon
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </div>
 
               <div className="modal-form-group">
-                <label>Target Country</label>
+                <label>Target Carrier Region</label>
                 <select
                   value={selectedCountryCode}
                   onChange={(e) => setSelectedCountryCode(e.target.value)}
                   className="modal-select"
                 >
                   {countries.map((c) => (
-                    <option key={c.code} value={c.code}>
-                      {c.flag} {c.name} ({c.dialCode}) — Real SIM
+                    <option key={c.code} value={c.code} disabled={!c.isActive}>
+                      {c.flag} {c.name} ({c.dialCode}) {c.isActive ? '— 25 Services In Stock' : '— (Coming Soon)'}
                     </option>
                   ))}
                 </select>

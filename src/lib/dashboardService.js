@@ -13,12 +13,33 @@ import {
   appwriteUpdatePassword
 } from './appwriteAuth';
 
-// Default / fallback services catalog matching Chris Shopper specification
+// Default / fallback services catalog matching Chris Shopper specification (25 USA Platforms)
 export const DEFAULT_SERVICES = [
-  { id: 'telegram', name: 'Telegram', code: 'tg', category: 'messaging', retailPrice: 500, price: 300, is_active: true, carrier_speed: '< 3.2s' },
-  { id: 'whatsapp', name: 'WhatsApp', code: 'wa', category: 'messaging', retailPrice: 600, price: 350, is_active: true, carrier_speed: '< 4.1s' },
-  { id: 'openai', name: 'OpenAI / ChatGPT', code: 'oa', category: 'ai', retailPrice: 400, price: 250, is_active: false, carrier_speed: 'Coming Soon' },
-  { id: 'google', name: 'Google & Gmail', code: 'go', category: 'email', retailPrice: 350, price: 200, is_active: false, carrier_speed: 'Coming Soon' },
+  { id: 'whatsapp', name: 'WhatsApp / WA Business', code: 'wa', category: 'messaging', retailPrice: 3500, price: 2700, is_active: true, carrier_speed: '< 3s' },
+  { id: 'telegram', name: 'Telegram', code: 'tg', category: 'messaging', retailPrice: 3500, price: 2700, is_active: true, carrier_speed: '< 3s' },
+  { id: 'tiktok', name: 'TikTok / Douyin', code: 'lf', category: 'social', retailPrice: 1200, price: 700, is_active: true, carrier_speed: '< 4s' },
+  { id: 'google', name: 'Google & Gmail', code: 'go', category: 'tech', retailPrice: 1600, price: 1020, is_active: true, carrier_speed: '< 4s' },
+  { id: 'chatgpt', name: 'ChatGPT / OpenAI', code: 'dr', category: 'tech', retailPrice: 1300, price: 760, is_active: true, carrier_speed: '< 4s' },
+  { id: 'apple', name: 'Apple / iCloud ID', code: 'wx', category: 'tech', retailPrice: 1000, price: 500, is_active: true, carrier_speed: '< 4s' },
+  { id: 'instagram', name: 'Instagram + Threads', code: 'ig', category: 'social', retailPrice: 1400, price: 850, is_active: true, carrier_speed: '< 4s' },
+  { id: 'facebook', name: 'Facebook / Meta', code: 'fb', category: 'social', retailPrice: 1300, price: 750, is_active: true, carrier_speed: '< 4s' },
+  { id: 'twitter', name: 'Twitter / X', code: 'tw', category: 'social', retailPrice: 1300, price: 750, is_active: true, carrier_speed: '< 4s' },
+  { id: 'signal', name: 'Signal Messenger', code: 'bw', category: 'messaging', retailPrice: 1200, price: 755, is_active: true, carrier_speed: '< 4s' },
+  { id: 'viber', name: 'Viber', code: 'vi', category: 'messaging', retailPrice: 1100, price: 650, is_active: true, carrier_speed: '< 5s' },
+  { id: 'paypal', name: 'PayPal', code: 'ts', category: 'finance', retailPrice: 2000, price: 1260, is_active: true, carrier_speed: '< 5s' },
+  { id: 'cashapp', name: 'Cash App', code: 'it', category: 'finance', retailPrice: 1800, price: 1000, is_active: true, carrier_speed: '< 5s' },
+  { id: 'snapchat', name: 'Snapchat', code: 'fu', category: 'social', retailPrice: 1400, price: 800, is_active: true, carrier_speed: '< 4s' },
+  { id: 'twitch', name: 'Twitch', code: 'hb', category: 'entertainment', retailPrice: 2200, price: 1532, is_active: true, carrier_speed: '< 5s' },
+  { id: 'netflix', name: 'Netflix', code: 'nf', category: 'entertainment', retailPrice: 1300, price: 765, is_active: true, carrier_speed: '< 5s' },
+  { id: 'microsoft', name: 'Microsoft / Outlook', code: 'mm', category: 'tech', retailPrice: 1300, price: 718, is_active: true, carrier_speed: '< 4s' },
+  { id: 'yahoo', name: 'Yahoo Mail', code: 'mb', category: 'tech', retailPrice: 1400, price: 890, is_active: true, carrier_speed: '< 4s' },
+  { id: 'gmx', name: 'GMX Mail', code: 'abk', category: 'tech', retailPrice: 2600, price: 1830, is_active: true, carrier_speed: '< 6s' },
+  { id: 'ebay', name: 'eBay', code: 'dh', category: 'commerce', retailPrice: 1500, price: 874, is_active: true, carrier_speed: '< 5s' },
+  { id: 'tinder', name: 'Tinder (Swipe App)', code: 'oi', category: 'dating', retailPrice: 1400, price: 777, is_active: true, carrier_speed: '< 4s' },
+  { id: 'match', name: 'Match.com', code: 'axr', category: 'dating', retailPrice: 4200, price: 3050, is_active: true, carrier_speed: '< 6s' },
+  { id: 'okcupid', name: 'OkCupid', code: 'vm', category: 'dating', retailPrice: 1500, price: 884, is_active: true, carrier_speed: '< 5s' },
+  { id: 'badoo', name: 'Badoo', code: 'qv', category: 'dating', retailPrice: 1400, price: 750, is_active: true, carrier_speed: '< 5s' },
+  { id: 'other', name: 'Any Other Service', code: 'ot', category: 'other', retailPrice: 1300, price: 798, is_active: true, carrier_speed: '< 5s' },
 ];
 
 /**
@@ -209,12 +230,42 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
     throw new Error(`Insufficient balance (${siteConfig.formatNaira(currentBalance)}). Service cost is ${siteConfig.formatNaira(service.price)}. Please top up on WhatsApp.`);
   }
 
-  // Generate clean US non-VoIP number
-  const areaCodes = ['415', '212', '312', '786', '650', '206', '512', '404', '305', '702'];
-  const areaCode = areaCodes[Math.floor(Math.random() * areaCodes.length)];
-  const mid = Math.floor(200 + Math.random() * 799);
-  const end = Math.floor(1000 + Math.random() * 8999);
-  const phoneNumber = `+1 (${areaCode}) ${mid}-${end}`;
+  const normCountry = String(country).toLowerCase();
+  const isUK = normCountry === 'uk' || normCountry === 'gb' || normCountry === '16' || normCountry.includes('kingdom');
+  const isCanada = normCountry === 'ca' || normCountry === 'canada' || normCountry === '36';
+
+  let phoneNumber = '';
+  let countryCode = 'US';
+  let countryName = 'United States';
+  let flag = '🇺🇸';
+
+  if (isUK) {
+    const ukPrefixes = ['7700', '7800', '7911', '7400', '7500', '7900', '7300', '7100'];
+    const prefix = ukPrefixes[Math.floor(Math.random() * ukPrefixes.length)];
+    const rest = Math.floor(100000 + Math.random() * 899999);
+    phoneNumber = `+44 ${prefix} ${rest}`;
+    countryCode = 'UK';
+    countryName = 'United Kingdom';
+    flag = '🇬🇧';
+  } else if (isCanada) {
+    const caAreaCodes = ['416', '647', '514', '403', '604', '778', '905', '613', '438', '587'];
+    const areaCode = caAreaCodes[Math.floor(Math.random() * caAreaCodes.length)];
+    const mid = Math.floor(200 + Math.random() * 799);
+    const end = Math.floor(1000 + Math.random() * 8999);
+    phoneNumber = `+1 (${areaCode}) ${mid}-${end}`;
+    countryCode = 'CA';
+    countryName = 'Canada';
+    flag = '🇨🇦';
+  } else {
+    const usAreaCodes = ['415', '212', '312', '786', '650', '206', '512', '404', '305', '702'];
+    const areaCode = usAreaCodes[Math.floor(Math.random() * usAreaCodes.length)];
+    const mid = Math.floor(200 + Math.random() * 799);
+    const end = Math.floor(1000 + Math.random() * 8999);
+    phoneNumber = `+1 (${areaCode}) ${mid}-${end}`;
+    countryCode = 'US';
+    countryName = 'United States';
+    flag = '🇺🇸';
+  }
 
   const newBalance = Number((currentBalance - service.price).toFixed(2));
 
@@ -229,11 +280,11 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
         user_id: userId,
         user_email: '',
         product_type: 'sms_service',
-        item_name: service.name,
+        item_name: `${service.name} (${countryCode})`,
         reference: phoneNumber,
         price: service.price,
         status: 'pending',
-        details: JSON.stringify({ country, service: service.name, phoneNumber })
+        details: JSON.stringify({ country: countryCode, countryName, flag, service: service.name, phoneNumber })
       }
     );
     orderId = doc.$id;
@@ -258,12 +309,19 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
     }
   } catch {}
 
+  // Dispatch global balance update event
+  try {
+    window.dispatchEvent(new CustomEvent('balance-updated', { detail: { balance: newBalance } }));
+  } catch {}
+
   return {
     order: {
       id: orderId,
       user_id: userId,
       service_name: service.name,
-      country_code: country,
+      country_code: countryCode,
+      country_name: countryName,
+      country_flag: flag,
       phone_number: phoneNumber,
       cost: service.price,
       status: 'pending',
@@ -302,9 +360,9 @@ export async function simulateSmsOtp(orderId) {
 }
 
 /**
- * Cancel and Auto-Refund an active order
+ * Cancel and Auto-Refund an active order (supports user cancellation or timeout)
  */
-export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalance }) {
+export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalance, status = 'cancelled' }) {
   const newBalance = Number((currentBalance + Number(cost)).toFixed(2));
 
   try {
@@ -313,7 +371,7 @@ export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalan
         APPWRITE_CONFIG.databaseId,
         APPWRITE_CONFIG.collections.orders,
         orderId,
-        { status: 'cancelled' }
+        { status }
       );
     }
     await appwriteUpdateUserBalance(userId, newBalance);
@@ -328,6 +386,10 @@ export async function cancelAndRefundOrder({ orderId, userId, cost, currentBalan
       u.balance = newBalance;
       localStorage.setItem('cs_user', JSON.stringify(u));
     }
+  } catch {}
+
+  try {
+    window.dispatchEvent(new CustomEvent('balance-updated', { detail: { balance: newBalance } }));
   } catch {}
 
   return newBalance;

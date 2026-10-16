@@ -4,6 +4,7 @@ import { pricingPlans, pricingCategories, countries } from '../data/pricingData'
 import { useAuth } from '../lib/AuthContext';
 import { fetchLivePricing, subscribeToPricingUpdates } from '../lib/pricingService';
 import { formatNaira } from '../data/siteConfig';
+import BrandIcon from './BrandIcon';
 
 export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
   const { currentUser } = useAuth();
@@ -45,6 +46,7 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
         return {
           ...plan,
           price: formatNaira(live.price_usd),
+          rawPrice: Number(live.price_usd),
           isActive: live.is_active,
           speed: live.carrier_speed || plan.speed,
           badge: live.is_active ? 'Available Now' : 'Coming Soon',
@@ -79,7 +81,7 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
         <span className="eyebrow">Service Catalog &amp; Rates</span>
         <h2>SMS Verification Pricing</h2>
         <p>
-          Instant number allocation for <strong>Telegram</strong> and <strong>WhatsApp</strong>. Additional platform carrier lines are currently rolling out.
+          Instant non-VoIP SMS verification carrier lines for <strong>25 Top Global Platforms</strong> across the United States. Other countries rolling out soon.
         </p>
       </div>
 
@@ -137,6 +139,32 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
            AUTHENTICATED MEMBERS SMS CATALOG VIEW
            ========================================================================= */
         <>
+          {/* USA Exclusive / Primary Region Showcase Banner Element */}
+          <div className="usa-exclusive-banner">
+            <div className="usa-banner-left">
+              <span className="usa-banner-flag">🇺🇸</span>
+              <div className="usa-banner-text">
+                <div className="usa-banner-title-row">
+                  <h4>United States (+1) Carrier Numbers</h4>
+                  <span className="usa-banner-live-pill">
+                    <span className="pulse-dot"></span>
+                    25 Platforms Active Now
+                  </span>
+                </div>
+                <p className="usa-banner-desc">
+                  Real AT&amp;T, Verizon &amp; T-Mobile non-VoIP physical SIM lines. Instant SMS OTP code delivery.
+                </p>
+              </div>
+            </div>
+            <div className="usa-banner-right">
+              <span className="teaser-label">Other Regions:</span>
+              <div className="teaser-badges-row">
+                <span className="teaser-badge">🇬🇧 UK (Rolling out next)</span>
+                <span className="teaser-badge">🇨🇦 Canada (Soon)</span>
+              </div>
+            </div>
+          </div>
+
           {/* Country Selection Bar */}
           <div className="country-filter-container">
             <span className="filter-label">Carrier Region:</span>
@@ -145,8 +173,15 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
                 <button
                   key={c.code}
                   type="button"
-                  className={`country-pill ${selectedCountry === c.code ? 'active' : ''}`}
-                  onClick={() => setSelectedCountry(c.code)}
+                  className={`country-pill ${selectedCountry === c.code ? 'active' : ''} ${!c.isActive ? 'country-pill-soon' : ''}`}
+                  onClick={() => {
+                    if (c.isActive) {
+                      setSelectedCountry(c.code);
+                    } else if (onNotifySoon) {
+                      onNotifySoon(`${c.name} Carrier Lines`);
+                    }
+                  }}
+                  title={c.isActive ? `View ${c.name} Numbers` : `${c.name} carrier lines rolling out soon`}
                 >
                   <span className="country-flag">{c.flag}</span>
                   <span className="country-name">{c.name}</span>
@@ -199,7 +234,7 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
           {/* Result stats summary */}
           <div className="catalog-meta-bar">
             <span>
-              Showing <strong>{filteredPlans.length}</strong> platforms • <strong className="text-green">{activeCount} Active Now</strong> (Telegram &amp; WhatsApp)
+              Showing <strong>{filteredPlans.length}</strong> platforms • <strong className="text-green">{activeCount} Active Now</strong> (USA Carrier Lines)
             </span>
             <span className="meta-auto-refund">🛡️ Zero Charge if SMS Not Received</span>
           </div>
@@ -213,9 +248,12 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
                   className={`pricing-card card-interactive ${plan.isActive ? 'pricing-card-active' : 'pricing-card-soon'}`}
                 >
                   <div className="pricing-card-top">
-                    <div className="pricing-title-group">
-                      <h3>{plan.title}</h3>
-                      <span className="pricing-country-tag">{activeCountry.flag} {activeCountry.dialCode}</span>
+                    <div className="pricing-title-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <BrandIcon name={plan.title} iconKey={plan.id} size={42} />
+                      <div>
+                        <h3>{plan.title}</h3>
+                        <span className="pricing-country-tag">{activeCountry.flag} {activeCountry.dialCode}</span>
+                      </div>
                     </div>
                     {plan.isActive ? (
                       <span className="pricing-badge badge-active">

@@ -28,7 +28,11 @@ import {
   FaSlack,
   FaSkype,
   FaGlobe,
-  FaShieldHalved
+  FaShieldHalved,
+  FaViber,
+  FaHeart,
+  FaEnvelope,
+  FaCommentDots
 } from 'react-icons/fa6';
 
 import {
@@ -56,7 +60,9 @@ import {
   SiEbay,
   SiAliexpress,
   SiShopify,
-  SiWordpress
+  SiWordpress,
+  SiTinder,
+  SiBadoo
 } from 'react-icons/si';
 
 import { TbBrandOpenai } from 'react-icons/tb';
@@ -78,6 +84,13 @@ export const BRAND_ICONS = [
   { id: 'bluesky', name: 'Bluesky', category: 'Social', component: SiBluesky, color: '#1185FE', keywords: ['bluesky', 'bsky', 'social'] },
   { id: 'mastodon', name: 'Mastodon', category: 'Social', component: SiMastodon, color: '#6364FF', keywords: ['mastodon', 'fediverse', 'social'] },
   { id: 'signal', name: 'Signal', category: 'Messaging', component: SiSignal, color: '#3A76F0', keywords: ['signal', 'messaging', 'private'] },
+  { id: 'viber', name: 'Viber', category: 'Messaging', component: FaViber, color: '#7360F2', keywords: ['viber', 'calling', 'chat'] },
+
+  // Dating & Romance
+  { id: 'tinder', name: 'Tinder', category: 'Dating', component: SiTinder, color: '#FF4458', keywords: ['tinder', 'dating', 'swipe', 'tind swipe app', 'oi'] },
+  { id: 'match', name: 'Match.com', category: 'Dating', component: FaHeart, color: '#ED1C24', keywords: ['match', 'dating', 'match.com', 'axr'] },
+  { id: 'okcupid', name: 'OkCupid', category: 'Dating', component: FaHeart, color: '#0070CD', keywords: ['okcupid', 'cupid', 'dating', 'vm'] },
+  { id: 'badoo', name: 'Badoo', category: 'Dating', component: SiBadoo, color: '#783BF9', keywords: ['badoo', 'dating', 'qv'] },
 
   // Apple & Big Tech Ecosystems
   { id: 'apple', name: 'Apple', category: 'Tech', component: FaApple, color: '#FFFFFF', keywords: ['apple', 'ios', 'iphone', 'mac', 'appstore', '🍎'] },
@@ -86,6 +99,7 @@ export const BRAND_ICONS = [
   { id: 'gmail', name: 'Gmail', category: 'Email', component: SiGmail, color: '#EA4335', keywords: ['gmail', 'google', 'mail', 'email', '✉️'] },
   { id: 'microsoft', name: 'Microsoft / Outlook', category: 'Tech', component: FaMicrosoft, color: '#00A4EF', keywords: ['microsoft', 'ms', 'office', 'windows', 'outlook', 'hotmail'] },
   { id: 'yahoo', name: 'Yahoo', category: 'Email', component: FaYahoo, color: '#6001D2', keywords: ['yahoo', 'mail', 'email'] },
+  { id: 'gmx', name: 'GMX Mail', category: 'Email', component: FaEnvelope, color: '#1C449B', keywords: ['gmx', 'mail', 'email'] },
 
   // VPN & Security Services
   { id: 'nordvpn', name: 'NordVPN', category: 'Security', component: SiNordvpn, color: '#4687FF', keywords: ['nordvpn', 'nord', 'vpn', 'security', 'privacy', 'proxy', '🛡️'] },
@@ -133,12 +147,24 @@ export const BRAND_ICONS = [
   { id: 'wordpress', name: 'WordPress', category: 'Web', component: SiWordpress, color: '#21759B', keywords: ['wordpress', 'wp', 'cms', 'blog'] },
 
   // Generic Fallbacks
+  { id: 'other', name: 'Any Other Service', category: 'Generic', component: FaCommentDots, color: '#38BDF8', keywords: ['other', 'any other', 'unlisted', 'ot', 'carrier'] },
   { id: 'generic_shield', name: 'Security / VPN', category: 'Generic', component: FaShieldHalved, color: '#38BDF8', keywords: ['security', 'shield', 'protect', 'vpn', 'safe', '🛡️'] },
   { id: 'generic_globe', name: 'Web / Platform', category: 'Generic', component: FaGlobe, color: '#818CF8', keywords: ['web', 'website', 'online', 'globe', '🌐'] }
 ];
 
 // Emoji and keyword mapping table to auto-resolve legacy or emoji strings to official brand IDs
 const EMOJI_AND_ALIAS_MAP = {
+  'viber': 'viber',
+  'signal': 'signal',
+  'tinder': 'tinder',
+  'tind swipe app': 'tinder',
+  'match': 'match',
+  'match.com': 'match',
+  'okcupid': 'okcupid',
+  'badoo': 'badoo',
+  'gmx': 'gmx',
+  'other': 'other',
+  'any other': 'other',
   '📘': 'facebook',
   'fb': 'facebook',
   'facebook': 'facebook',
