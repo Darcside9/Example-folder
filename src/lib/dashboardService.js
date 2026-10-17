@@ -23,7 +23,7 @@ import {
 // Default / fallback services catalog matching Chris Shopper specification (25 USA Platforms)
 export const DEFAULT_SERVICES = [
   { id: 'whatsapp', name: 'WhatsApp / WA Business', code: 'wa', category: 'messaging', retailPrice: 3500, price: 2700, is_active: true, carrier_speed: '< 3s' },
-  { id: 'telegram', name: 'Telegram', code: 'tg', category: 'messaging', retailPrice: 3500, price: 2700, is_active: true, carrier_speed: '< 3s' },
+  { id: 'telegram', name: 'Telegram', code: 'tg', category: 'messaging', retailPrice: 2000, price: 1500, is_active: true, carrier_speed: '< 3s' },
   { id: 'tiktok', name: 'TikTok / Douyin', code: 'lf', category: 'social', retailPrice: 1200, price: 700, is_active: true, carrier_speed: '< 4s' },
   { id: 'google', name: 'Google & Gmail', code: 'go', category: 'tech', retailPrice: 1600, price: 1020, is_active: true, carrier_speed: '< 4s' },
   { id: 'chatgpt', name: 'ChatGPT / OpenAI', code: 'dr', category: 'tech', retailPrice: 1300, price: 760, is_active: true, carrier_speed: '< 4s' },
@@ -31,7 +31,7 @@ export const DEFAULT_SERVICES = [
   { id: 'instagram', name: 'Instagram + Threads', code: 'ig', category: 'social', retailPrice: 1400, price: 850, is_active: true, carrier_speed: '< 4s' },
   { id: 'facebook', name: 'Facebook / Meta', code: 'fb', category: 'social', retailPrice: 1300, price: 750, is_active: true, carrier_speed: '< 4s' },
   { id: 'twitter', name: 'Twitter / X', code: 'tw', category: 'social', retailPrice: 1300, price: 750, is_active: true, carrier_speed: '< 4s' },
-  { id: 'signal', name: 'Signal Messenger', code: 'bw', category: 'messaging', retailPrice: 1200, price: 755, is_active: true, carrier_speed: '< 4s' },
+  { id: 'signal', name: 'Signal Messenger', code: 'bw', category: 'messaging', retailPrice: 1000, price: 560, is_active: true, carrier_speed: '< 4s' },
   { id: 'viber', name: 'Viber', code: 'vi', category: 'messaging', retailPrice: 1100, price: 650, is_active: true, carrier_speed: '< 5s' },
   { id: 'paypal', name: 'PayPal', code: 'ts', category: 'finance', retailPrice: 2000, price: 1260, is_active: true, carrier_speed: '< 5s' },
   { id: 'cashapp', name: 'Cash App', code: 'it', category: 'finance', retailPrice: 1800, price: 1000, is_active: true, carrier_speed: '< 5s' },

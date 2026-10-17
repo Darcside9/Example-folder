@@ -8,10 +8,11 @@ import { APPWRITE_CONFIG, client, databases, Query, ID } from './appwrite';
 export const DEFAULT_PRODUCT_PRICING = [
   // Carrier SMS Services (Prices in NGN)
   { product_id: 'apple', name: 'Apple / iCloud ID', category: 'tech', product_type: 'sms_service', price_usd: 500, is_active: true, carrier_speed: '< 4s' },
-  { product_id: 'telegram', name: 'Telegram', category: 'messaging', product_type: 'sms_service', price_usd: 2700, is_active: true, carrier_speed: '< 3s' },
+  { product_id: 'telegram', name: 'Telegram', category: 'messaging', product_type: 'sms_service', price_usd: 1500, is_active: true, carrier_speed: '< 3s' },
+  { product_id: 'signal', name: 'Signal Private Messenger', category: 'messaging', product_type: 'sms_service', price_usd: 560, is_active: true, carrier_speed: '< 4s' },
   { product_id: 'whatsapp', name: 'WhatsApp / WA Business', category: 'messaging', product_type: 'sms_service', price_usd: 2700, is_active: true, carrier_speed: '< 3s' },
   { product_id: 'chatgpt', name: 'ChatGPT / OpenAI', category: 'tech', product_type: 'sms_service', price_usd: 760, is_active: true, carrier_speed: '< 4s' },
-  { product_id: 'google', name: 'Google & Gmail', category: 'tech', product_type: 'sms_service', price_usd: 1020, is_active: true, carrier_speed: '< 4s' },
+  { product_id: 'google', name: 'Google & Gmail', code: 'go', category: 'tech', product_type: 'sms_service', price_usd: 1020, is_active: true, carrier_speed: '< 4s' },
   { product_id: 'tiktok', name: 'TikTok / Douyin', category: 'social', product_type: 'sms_service', price_usd: 700, is_active: true, carrier_speed: '< 4s' },
 
   // Account Log Categories (Prices in NGN)

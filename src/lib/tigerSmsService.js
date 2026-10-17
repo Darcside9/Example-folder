@@ -33,7 +33,7 @@ export const CORE_USA_PLATFORMS = [
     defaultUsd: 0.250,
     minUsd: 0.250,
     stock: 120781,
-    defaultRetailNgn: 2700,
+    defaultRetailNgn: 1500,
     description: 'Instant Telegram login & session authorization code.'
   },
   {
@@ -160,10 +160,10 @@ export const CORE_USA_PLATFORMS = [
     category: 'messaging',
     icon: 'generic_signal',
     carrierSpeed: '< 5s',
-    defaultUsd: 0.042,
+    defaultUsd: 0.040,
     minUsd: 0.040,
     stock: 163094,
-    defaultRetailNgn: 755,
+    defaultRetailNgn: 560,
     description: 'Signal encrypted messenger registration.'
   },
   {
