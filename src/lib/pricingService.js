@@ -4,6 +4,7 @@
 // ==========================================================================
 
 import { APPWRITE_CONFIG, client, databases, Query, ID } from './appwrite';
+import { firebaseFetchPricing, firebaseUpdatePricing } from './firebaseDb';
 
 export const DEFAULT_PRODUCT_PRICING = [
   // Carrier SMS Services (Prices in NGN)
@@ -24,7 +25,7 @@ export const DEFAULT_PRODUCT_PRICING = [
 ];
 
 /**
- * Fetch live pricing catalog from Appwrite Cloud DB
+ * Fetch live pricing catalog from Appwrite Cloud DB (with automated Firebase Firestore failover)
  */
 export async function fetchLivePricing() {
   try {
@@ -63,7 +64,16 @@ export async function fetchLivePricing() {
         carrier_speed: d.carrier_speed
       }));
   } catch (err) {
-    console.warn('Appwrite pricing read fallback to defaults:', err.message);
+    console.warn('Appwrite pricing read notice. Testing Firebase failover...', err.message);
+    try {
+      const fbDocs = await firebaseFetchPricing();
+      if (Array.isArray(fbDocs) && fbDocs.length > 0) {
+        console.log('✅ Loaded live pricing from Firebase Firestore failover successfully!');
+        return fbDocs;
+      }
+    } catch (fbErr) {
+      console.warn('Firebase failover note:', fbErr.message);
+    }
     return DEFAULT_PRODUCT_PRICING;
   }
 }
@@ -123,6 +133,14 @@ export async function adminUpdateProductPrice(docIdOrProductId, updates) {
         targetDocId,
         payload
       );
+      // Dual-sync to Firebase Firestore
+      if (updates.price_usd !== undefined) {
+        try {
+          await firebaseUpdatePricing(existingDoc?.product_id || docIdOrProductId, updates.price_usd);
+        } catch (fbErr) {
+          console.warn('Firebase pricing dual-update notice:', fbErr.message);
+        }
+      }
       return { success: true, updated };
     } else {
       // Create new document in products_pricing if not present yet
@@ -140,6 +158,14 @@ export async function adminUpdateProductPrice(docIdOrProductId, updates) {
           carrier_speed: updates.carrier_speed || '< 3s'
         }
       );
+      // Dual-sync to Firebase Firestore
+      if (updates.price_usd !== undefined) {
+        try {
+          await firebaseUpdatePricing(docIdOrProductId, updates.price_usd);
+        } catch (fbErr) {
+          console.warn('Firebase pricing dual-create notice:', fbErr.message);
+        }
+      }
       return { success: true, updated: created };
     }
   } catch (err) {

@@ -5,6 +5,7 @@
 // ==========================================================================
 
 import { APPWRITE_CONFIG, databases, Query, ID, client } from './appwrite';
+import { firebaseUpdatePricing } from './firebaseDb';
 
 export const DEFAULT_DOLLAR_RATE = 1600;
 const STORAGE_KEY = 'cs_usd_to_ngn_rate';
@@ -98,6 +99,13 @@ export async function saveDollarRate(newRate) {
         ID.unique(),
         payload
       );
+    }
+
+    // Dual-write to Firebase Firestore
+    try {
+      await firebaseUpdatePricing(SETTING_PRODUCT_ID, numericRate);
+    } catch (fbErr) {
+      console.warn('Firebase exchange rate dual-update notice:', fbErr.message);
     }
 
     // Update local cache

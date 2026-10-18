@@ -84,6 +84,23 @@ export async function appwriteSignUp(email, password, contactInfo = '', name = '
     console.error('Error creating user profile in Appwrite:', err);
   }
 
+  // Dual-mirror new profile to Firebase Firestore
+  try {
+    const { doc, setDoc } = await import('firebase/firestore');
+    const { db } = await import('./firebase');
+    if (db) {
+      await setDoc(doc(db, 'user_profiles', newAccount.$id), {
+        user_id: newAccount.$id,
+        email: cleanEmail,
+        contact_info: contactInfo || '',
+        balance: initialBalance,
+        role: role
+      }, { merge: true });
+    }
+  } catch (fbErr) {
+    console.warn('Firebase user profile mirror note:', fbErr.message);
+  }
+
   const userObj = {
     id: newAccount.$id,
     email: cleanEmail,
@@ -293,6 +310,13 @@ export async function appwriteUpdateUserBalance(userId, newBalance) {
         doc.$id,
         { balance: numericBalance }
       );
+      // Dual-sync to Firebase Firestore
+      try {
+        const { firebaseUpdateUserBalance } = await import('./firebaseDb');
+        await firebaseUpdateUserBalance(userId, numericBalance);
+      } catch (fbErr) {
+        console.warn('Firebase user balance mirror note:', fbErr.message);
+      }
       return true;
     }
     return false;

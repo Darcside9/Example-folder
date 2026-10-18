@@ -64,6 +64,8 @@ import {
   fetchLiveTigerSmsRates, 
   fetchTigerBalance 
 } from '../lib/tigerSmsService';
+import { syncAppwriteToFirebase } from '../lib/firebaseDb';
+import { isFirebaseConfigured, FIREBASE_CONFIG } from '../lib/firebase';
 
 const SAMPLE_LOG_LINE = '61590748374787 | dv4WaXTqmkR3 | OQVZ ZBN2 SEHY TINT SWPA RL66 SZZK 4RWU | BrandeeOats60@outlook.com | qvli4Ham3';
 
@@ -113,6 +115,42 @@ export default function AdminDashboard({ onShowToast }) {
   const [heartbeat, setHeartbeat] = useState(null);
   const [loadingHeartbeat, setLoadingHeartbeat] = useState(true);
   const [isPinging, setIsPinging] = useState(false);
+
+  // Firebase Migration & Sync State
+  const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
+  const [firebaseSyncResult, setFirebaseSyncResult] = useState(null);
+
+  const handleSyncToFirebase = async () => {
+    setIsSyncingFirebase(true);
+    setFirebaseSyncResult(null);
+    try {
+      const res = await syncAppwriteToFirebase();
+      if (res.pricingCount === 0 && res.errors && res.errors.length > 0) {
+        let firstErr = res.errors[0];
+        if (firstErr.includes('Missing or insufficient permissions')) {
+          firstErr = 'Firestore permission denied. In Firebase Console -> Firestore Database -> Rules tab, change to: allow read, write: if true; and click Publish.';
+        }
+        onShowToast?.(firstErr, 'error');
+        setFirebaseSyncResult({ success: false, error: firstErr });
+      } else if (res.errors && res.errors.length > 0) {
+        onShowToast?.(`Synced ${res.pricingCount} items with warnings`, 'warning');
+        setFirebaseSyncResult({ success: true, count: res.pricingCount, errors: res.errors });
+      } else {
+        onShowToast?.(`🎉 Successfully synced ${res.pricingCount} items to Firebase Firestore!`, 'success');
+        setFirebaseSyncResult({ success: true, count: res.pricingCount });
+      }
+    } catch (err) {
+      console.error('Firebase sync error:', err);
+      let msg = err.message || 'Sync failed';
+      if (msg.includes('Missing or insufficient permissions') || msg.includes('permission-denied')) {
+        msg = 'Firestore permission denied. In Firebase Console -> Firestore Database -> Rules tab, change to: allow read, write: if true; and click Publish.';
+      }
+      onShowToast?.(`Firebase Sync Error: ${msg}`, 'error');
+      setFirebaseSyncResult({ success: false, error: msg });
+    } finally {
+      setIsSyncingFirebase(false);
+    }
+  };
 
   // Platforms Catalog State
   const [platforms, setPlatforms] = useState([]);
@@ -1411,6 +1449,45 @@ export default function AdminDashboard({ onShowToast }) {
           <p className="db-keepalive-desc">
             🛡️ <strong>Anti-Dormancy Protection Active:</strong> Appwrite Cloud automatically pauses projects after 3+ days of inactivity. This system performs daily database mutations via Appwrite Cloud Function Cron and GitHub Actions external HTTPS requests to guarantee 100% database uptime with zero manual intervention.
           </p>
+
+          <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(255, 152, 0, 0.08)', borderRadius: '12px', border: '1px solid rgba(255, 152, 0, 0.25)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '18px' }}>🔥</span>
+                  <strong style={{ color: '#ffb74d', fontSize: '15px' }}>Google Firebase Firestore Dual-Backend Sync</strong>
+                  <span style={{ background: isFirebaseConfigured ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: isFirebaseConfigured ? '#4ade80' : '#f87171', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
+                    {isFirebaseConfigured ? 'CONFIGURED & STANDBY' : 'NOT CONFIGURED'}
+                  </span>
+                </div>
+                <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
+                  Firebase Spark never pauses or hibernates. 1-Click clone all 33 live pricing rates and dollar exchange rates from Appwrite into Google Firestore.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', border: 'none', padding: '8px 16px', fontWeight: 'bold' }}
+                onClick={handleSyncToFirebase}
+                disabled={isSyncingFirebase}
+              >
+                {isSyncingFirebase ? '⏳ Syncing to Firestore...' : '🔥 1-Click Sync to Firebase Firestore'}
+              </button>
+            </div>
+            {firebaseSyncResult && (
+              <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: firebaseSyncResult.success ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${firebaseSyncResult.success ? '#22c55e' : '#ef4444'}`, fontSize: '13px' }}>
+                {firebaseSyncResult.success ? (
+                  <span style={{ color: '#4ade80' }}>
+                    ✅ <strong>Success:</strong> {firebaseSyncResult.count} products &amp; system settings cloned to Firebase Firestore!
+                  </span>
+                ) : (
+                  <span style={{ color: '#f87171' }}>
+                    ⚠️ <strong>Notice:</strong> {firebaseSyncResult.error}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

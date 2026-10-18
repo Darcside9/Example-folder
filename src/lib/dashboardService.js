@@ -12,6 +12,7 @@ import {
   appwriteUpdateProfile,
   appwriteUpdatePassword
 } from './appwriteAuth';
+import { firebaseSaveOrder, firebaseUpdateUserBalance } from './firebaseDb';
 import { 
   orderTigerSmsNumber, 
   checkTigerSmsStatus, 
@@ -310,6 +311,33 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
     console.warn('Appwrite balance deduct note:', bErr.message);
   }
 
+  // Dual-mirror to Firebase Firestore
+  try {
+    await firebaseSaveOrder({
+      user_id: userId,
+      user_email: '',
+      product_type: 'sms_service',
+      item_name: `${service.name} (${countryCode})`,
+      reference: phoneNumber,
+      price: service.price,
+      status: 'pending',
+      details: JSON.stringify({ 
+        country: countryCode, 
+        countryName, 
+        flag, 
+        service: service.name, 
+        phoneNumber,
+        activationId,
+        rawNumber,
+        serviceCode,
+        countryId
+      })
+    });
+    await firebaseUpdateUserBalance(userId, newBalance);
+  } catch (fbErr) {
+    console.warn('Firebase dual-order mirror note:', fbErr.message);
+  }
+
   // Update local session
   try {
     const raw = localStorage.getItem('cs_user');
@@ -378,6 +406,11 @@ export async function cancelAndRefundOrder({ orderId, activationId, userId, cost
       );
     }
     await appwriteUpdateUserBalance(userId, newBalance);
+    try {
+      await firebaseUpdateUserBalance(userId, newBalance);
+    } catch (fbErr) {
+      console.warn('Firebase refund balance sync note:', fbErr.message);
+    }
   } catch (err) {
     console.warn('Cancel order update notice:', err.message);
   }
