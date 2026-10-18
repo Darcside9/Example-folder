@@ -1,18 +1,37 @@
-name: Appwrite DB Daily Keep-Alive & Auto-Pause Prevention
+name: Appwrite DB Keep-Alive & Inactivity Prevention
 
 on:
   schedule:
-    # Runs daily at 05:15 UTC to keep Appwrite Cloud project and database active
-    - cron: '15 5 * * *'
+    # Runs every 4 hours (00:00, 04:00, 08:00, 12:00, 16:00, 20:00 UTC) to prevent idle sleep
+    - cron: '0 */4 * * *'
   workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/appwrite-db-keepalive.yml'
 
 jobs:
   keepalive-ping:
-    name: Ping Appwrite Database
+    name: Ping Appwrite Database & Services
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
     steps:
+      - name: Immediate Direct HTTP Heartbeat (Zero-Dependency)
+        run: |
+          echo "Pinging Appwrite Cloud API directly..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X GET \
+            "https://fra.cloud.appwrite.io/v1/databases/6ab96f3c0031c3231183/collections/products_pricing/documents?limit=1" \
+            -H "X-Appwrite-Project: 6ab96624002e549083d1" \
+            -H "Content-Type: application/json")
+          echo "Appwrite Cloud HTTP Status: $STATUS"
+          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+            echo "✅ Direct API keep-alive ping successful!"
+          else
+            echo "⚠️ Warning: HTTP Status returned $STATUS"
+          fi
+
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -25,7 +44,7 @@ jobs:
       - name: Install Dependencies
         run: npm install --no-audit --prefer-offline
 
-      - name: Execute Daily Keep-Alive Heartbeat Ping
+      - name: Execute Full Database Mutation & Serverless Function Ping
         env:
           VITE_APPWRITE_ENDPOINT: ${{ secrets.VITE_APPWRITE_ENDPOINT || 'https://fra.cloud.appwrite.io/v1' }}
           VITE_APPWRITE_PROJECT_ID: ${{ secrets.VITE_APPWRITE_PROJECT_ID || '6ab96624002e549083d1' }}
