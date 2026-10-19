@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { siteConfig } from '../data/siteConfig';
 import { useAuth } from '../lib/AuthContext';
@@ -7,6 +7,7 @@ import { useMediaQuery } from '../hooks/useMediaQuery';
 export default function Navbar({ onOpenOrderModal }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const userDropdownRef = useRef(null);
   
   const { currentUser, logout, isAdmin } = useAuth();
   const location = useLocation();
@@ -16,6 +17,17 @@ export default function Navbar({ onOpenOrderModal }) {
     setMobileMenuOpen(false);
     setUserDropdownOpen(false);
   };
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target)) {
+        setUserDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Prevent scroll when mobile menu is open
   useEffect(() => {
@@ -82,7 +94,7 @@ export default function Navbar({ onOpenOrderModal }) {
             </nav>
             <div className="header-actions">
               {currentUser ? (
-                <div className="user-session-wrapper">
+                <div className="user-session-wrapper" ref={userDropdownRef}>
                   <button type="button" className="user-pill-btn" onClick={() => setUserDropdownOpen(!userDropdownOpen)}>
                     <span className="user-avatar-circle">{(currentUser.email || 'U').charAt(0).toUpperCase()}</span>
                     <span className="user-balance-pill">{siteConfig.formatNaira(currentUser.balance || 0)}</span>

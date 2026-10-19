@@ -8,7 +8,7 @@ export default function SmsCountry3DSelector({
   onSelectPlatform,
   currentUserBalance = 0
 }) {
-  const [expandedCountry, setExpandedCountry] = useState('US'); // 'US' | 'CA' | 'UK' | null
+  const [expandedCountry, setExpandedCountry] = useState(null); // 'US' | 'CA' | 'UK' | null (collapsed by default, prevents automatic drop down)
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
 
