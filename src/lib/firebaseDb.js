@@ -132,52 +132,19 @@ export async function firebaseGetUserOrders(userId) {
 }
 
 /**
- * 1-Click Migration / Sync from Appwrite Cloud DB to Google Firebase Firestore
+ * Verification of Google Firebase Firestore cloud connection
  */
-export async function syncAppwriteToFirebase() {
+export async function verifyFirebaseStatus() {
   if (!db) {
     throw new Error('Firebase Firestore is not initialized.');
   }
 
-  // Import appwrite on-demand to avoid circular dependencies
-  const { databases, APPWRITE_CONFIG, Query } = await import('./appwrite');
+  const colRef = collection(db, FIREBASE_COLLECTIONS.products_pricing);
+  const snap = await getDocs(colRef);
 
-  const results = {
-    pricingCount: 0,
+  return {
+    pricingCount: snap.size,
     errors: []
   };
-
-  try {
-    // 1. Fetch all documents from Appwrite products_pricing
-    const res = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.products_pricing,
-      [Query.limit(100)]
-    );
-
-    for (const docItem of res.documents) {
-      try {
-        const docId = docItem.product_id || docItem.$id;
-        const targetRef = doc(db, FIREBASE_COLLECTIONS.products_pricing, docId);
-        await setDoc(targetRef, {
-          product_id: docItem.product_id,
-          name: docItem.name,
-          category: docItem.category,
-          product_type: docItem.product_type,
-          price_usd: Number(docItem.price_usd),
-          is_active: docItem.is_active !== false,
-          carrier_speed: docItem.carrier_speed || '< 4s',
-          synced_from_appwrite_at: serverTimestamp()
-        }, { merge: true });
-        results.pricingCount++;
-      } catch (itemErr) {
-        results.errors.push(`Error syncing ${docItem.product_id}: ${itemErr.message}`);
-      }
-    }
-  } catch (err) {
-    throw new Error(`Failed to read from Appwrite: ${err.message}`);
-  }
-
-  return results;
 }
 

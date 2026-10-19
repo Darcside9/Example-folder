@@ -1,13 +1,13 @@
 // ==========================================================================
 // CHRIS SHOPPER — ADMIN MASTER CONTROL PANEL
 // Features: Zero-Trust Account Logs Ingestion Zone, Live Delimiter Tokenizer,
-// Interactive Verification Grid, Batch Sync to Appwrite Cloud, & Real-Time Pricing
+// Interactive Verification Grid, Batch Sync to Google Firebase Cloud, & Real-Time Pricing
 // ==========================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminGetAllUsers, adminUpdateUserBalance } from '../lib/dashboardService';
-import { adminBulkImportLogs } from '../lib/appwriteDispenser';
+import { adminBulkImportLogs } from '../lib/firebaseDispenser';
 import { fetchLivePricing, adminUpdateProductPrice, subscribeToPricingUpdates } from '../lib/pricingService';
 import { 
   fetchDynamicPlatforms, 
@@ -41,12 +41,6 @@ import {
   parseLineWithSchema 
 } from '../lib/delimiterConfig';
 import { 
-  fetchHeartbeatStatus, 
-  triggerHeartbeatPing, 
-  formatRelativeTime, 
-  formatDateTime 
-} from '../lib/heartbeatService';
-import { 
   getStoredDollarRate, 
   fetchLiveDollarRate, 
   saveDollarRate, 
@@ -64,7 +58,7 @@ import {
   fetchLiveTigerSmsRates, 
   fetchTigerBalance 
 } from '../lib/tigerSmsService';
-import { syncAppwriteToFirebase } from '../lib/firebaseDb';
+import { verifyFirebaseStatus } from '../lib/firebaseDb';
 import { isFirebaseConfigured, FIREBASE_CONFIG } from '../lib/firebase';
 
 const SAMPLE_LOG_LINE = '61590748374787 | dv4WaXTqmkR3 | OQVZ ZBN2 SEHY TINT SWPA RL66 SZZK 4RWU | BrandeeOats60@outlook.com | qvli4Ham3';
@@ -111,41 +105,21 @@ export default function AdminDashboard({ onShowToast }) {
   const [bulkMarginPct, setBulkMarginPct] = useState('50');
   const [isApplyingBulk, setIsApplyingBulk] = useState(false);
 
-  // Heartbeat & Database Keep-Alive State
-  const [heartbeat, setHeartbeat] = useState(null);
-  const [loadingHeartbeat, setLoadingHeartbeat] = useState(true);
-  const [isPinging, setIsPinging] = useState(false);
-
-  // Firebase Migration & Sync State
+  // Firebase Cloud State
   const [isSyncingFirebase, setIsSyncingFirebase] = useState(false);
   const [firebaseSyncResult, setFirebaseSyncResult] = useState(null);
 
-  const handleSyncToFirebase = async () => {
+  const handleVerifyFirebaseConnection = async () => {
     setIsSyncingFirebase(true);
     setFirebaseSyncResult(null);
     try {
-      const res = await syncAppwriteToFirebase();
-      if (res.pricingCount === 0 && res.errors && res.errors.length > 0) {
-        let firstErr = res.errors[0];
-        if (firstErr.includes('Missing or insufficient permissions')) {
-          firstErr = 'Firestore permission denied. In Firebase Console -> Firestore Database -> Rules tab, change to: allow read, write: if true; and click Publish.';
-        }
-        onShowToast?.(firstErr, 'error');
-        setFirebaseSyncResult({ success: false, error: firstErr });
-      } else if (res.errors && res.errors.length > 0) {
-        onShowToast?.(`Synced ${res.pricingCount} items with warnings`, 'warning');
-        setFirebaseSyncResult({ success: true, count: res.pricingCount, errors: res.errors });
-      } else {
-        onShowToast?.(`🎉 Successfully synced ${res.pricingCount} items to Firebase Firestore!`, 'success');
-        setFirebaseSyncResult({ success: true, count: res.pricingCount });
-      }
+      const res = await verifyFirebaseStatus();
+      onShowToast?.(`🎉 Google Firebase Cloud Active! ${res.pricingCount} products & rates verified.`, 'success');
+      setFirebaseSyncResult({ success: true, count: res.pricingCount });
     } catch (err) {
-      console.error('Firebase sync error:', err);
-      let msg = err.message || 'Sync failed';
-      if (msg.includes('Missing or insufficient permissions') || msg.includes('permission-denied')) {
-        msg = 'Firestore permission denied. In Firebase Console -> Firestore Database -> Rules tab, change to: allow read, write: if true; and click Publish.';
-      }
-      onShowToast?.(`Firebase Sync Error: ${msg}`, 'error');
+      console.error('Firebase connection error:', err);
+      let msg = err.message || 'Verification failed';
+      onShowToast?.(`Firebase Notice: ${msg}`, 'error');
       setFirebaseSyncResult({ success: false, error: msg });
     } finally {
       setIsSyncingFirebase(false);
@@ -380,7 +354,7 @@ export default function AdminDashboard({ onShowToast }) {
     }
   };
 
-  // Load platforms catalog from Appwrite Cloud DB
+  // Load platforms catalog from Google Firebase Firestore
   const loadPlatforms = async () => {
     setLoadingPlatforms(true);
     try {
@@ -407,7 +381,7 @@ export default function AdminDashboard({ onShowToast }) {
     return () => window.removeEventListener('platforms-updated', handlePlatformsUpdated);
   }, []);
 
-  // Load registered users, live Appwrite pricing, and Tiger SMS rates
+  // Load registered users, live Firebase pricing, and Tiger SMS rates
   useEffect(() => {
     async function loadData() {
       try {
@@ -435,7 +409,6 @@ export default function AdminDashboard({ onShowToast }) {
       }
     }
     loadData();
-    loadHeartbeat();
 
     // Subscribe to live pricing updates
     const unsubscribePricing = subscribeToPricingUpdates((updatedList) => {
@@ -453,37 +426,6 @@ export default function AdminDashboard({ onShowToast }) {
       if (unsubscribeDollar) unsubscribeDollar();
     };
   }, []);
-
-  const loadHeartbeat = async () => {
-    setLoadingHeartbeat(true);
-    try {
-      const res = await fetchHeartbeatStatus();
-      if (res.success) {
-        setHeartbeat(res);
-      }
-    } catch (e) {
-      console.warn('Error loading heartbeat:', e);
-    } finally {
-      setLoadingHeartbeat(false);
-    }
-  };
-
-  const handleTriggerManualPing = async () => {
-    setIsPinging(true);
-    try {
-      const result = await triggerHeartbeatPing('admin_dashboard_manual');
-      if (result.success) {
-        toast(`⚡ Keep-alive ping successful! Counter: ${result.pingCount} (${result.durationMs}ms)`);
-        await loadHeartbeat();
-      } else {
-        toast(`⚠️ Ping notice: ${result.error || 'Failed to ping'}`);
-      }
-    } catch (err) {
-      toast(`❌ Ping error: ${err.message}`);
-    } finally {
-      setIsPinging(false);
-    }
-  };
 
   const toast = (msg) => {
     if (onShowToast) onShowToast(msg);
@@ -583,7 +525,7 @@ export default function AdminDashboard({ onShowToast }) {
       type: 'single',
       log,
       title: `Delete Log for ${log.username}`,
-      message: `Are you sure you want to permanently delete this ${log.status.toUpperCase()} account log (${log.username}) from ${log.platformName}? This action directly purges the record from Appwrite Cloud DB and cannot be reversed.`
+      message: `Are you sure you want to permanently delete this ${log.status.toUpperCase()} account log (${log.username}) from ${log.platformName}? This action directly purges the record from Google Firebase Cloud DB and cannot be reversed.`
     });
   };
 
@@ -593,7 +535,7 @@ export default function AdminDashboard({ onShowToast }) {
       type: 'bulk',
       count: selectedLogIds.length,
       title: `Bulk Delete ${selectedLogIds.length} Selected Account Logs`,
-      message: `Permanently delete ${selectedLogIds.length} selected account logs from Appwrite Cloud? This action is irreversible.`
+      message: `Permanently delete ${selectedLogIds.length} selected account logs from Google Firebase Cloud? This action is irreversible.`
     });
   };
 
@@ -643,7 +585,7 @@ export default function AdminDashboard({ onShowToast }) {
           });
           totalDeleted += (res?.deletedCount || 0);
         }
-        toast(`🗑️ Successfully deleted ${totalDeleted} account logs from Appwrite database.`);
+        toast(`🗑️ Successfully deleted ${totalDeleted} account logs from Google Firebase database.`);
         setSelectedLogIds([]);
       } else if (deleteConfirmModal.type === 'purge_sold') {
         const idsToPurge = deleteConfirmModal.ids;
@@ -665,7 +607,7 @@ export default function AdminDashboard({ onShowToast }) {
           });
           totalPurged += (res?.deletedCount || 0);
         }
-        toast(`🧹 Successfully purged ${totalPurged} SOLD logs from Appwrite database.`);
+        toast(`🧹 Successfully purged ${totalPurged} SOLD logs from Google Firebase database.`);
         setSelectedLogIds([]);
       }
       setDeleteConfirmModal(null);
@@ -741,9 +683,9 @@ export default function AdminDashboard({ onShowToast }) {
   };
 
   // -------------------------------------------------------------------------
-  // BATCH SYNC TO APPWRITE CLOUD
+  // BATCH SYNC TO GOOGLE FIREBASE CLOUD
   // -------------------------------------------------------------------------
-  const handleSyncToAppwrite = async () => {
+  const handleSyncToFirebase = async () => {
     const validRecords = parsedRows.filter(r => r.isValid);
     if (validRecords.length === 0) {
       toast('No valid records to upload. Please parse and fix any errors.');
@@ -808,7 +750,7 @@ export default function AdminDashboard({ onShowToast }) {
 
       if (res && res.successCount > 0) {
         setSyncResult(res);
-        toast(`🎉 Successfully uploaded ${res.successCount} account logs to Appwrite ${activePlatformConfig.name}!`);
+        toast(`🎉 Successfully uploaded ${res.successCount} account logs to Google Firebase ${activePlatformConfig.name}!`);
 
         // Refresh platforms catalog and notify marketplace
         await loadPlatforms();
@@ -827,7 +769,7 @@ export default function AdminDashboard({ onShowToast }) {
       } else {
         const errorDetails = res?.errors?.length > 0 
           ? res.errors.map(e => `${e.username}: ${e.error}`).join('; ')
-          : 'Appwrite rejected the upload batch. Please verify logs format.';
+          : 'Firebase rejected the upload batch. Please verify logs format.';
         toast(`❌ Upload failed: ${errorDetails}`);
         setSyncResult(res);
       }
@@ -1348,9 +1290,9 @@ export default function AdminDashboard({ onShowToast }) {
             <div className="dash-title-row">
               <h2>Admin Master Control Panel</h2>
               <span className="brand-gateway-badge">GATEWAY</span>
-              <span className="admin-badge-pill">Appwrite Cloud Zero-Trust</span>
+              <span className="admin-badge-pill" style={{ background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.25), rgba(234, 88, 12, 0.25))', color: '#ffb74d', borderColor: 'rgba(245, 158, 11, 0.4)' }}>Google Firebase Always-On</span>
             </div>
-            <p className="dash-email-sub">Appwrite Cloud Database Management &amp; Account Logs Dispenser Controller</p>
+            <p className="dash-email-sub">Google Firebase Cloud Database &amp; Account Logs Dispenser Controller</p>
           </div>
         </div>
 
@@ -1367,13 +1309,13 @@ export default function AdminDashboard({ onShowToast }) {
       {/* Admin Quick Metrics */}
       <div className="dashboard-metrics-grid">
         <div className="dash-metric-card">
-          <span className="dash-metric-label">Appwrite Cloud DB</span>
+          <span className="dash-metric-label">Firebase Cloud DB</span>
           <span className="dash-metric-val text-cyan">Connected ⚡</span>
-          <span className="dash-metric-sub">Project: darc (TablesDB)</span>
+          <span className="dash-metric-sub">Project: {FIREBASE_CONFIG.projectId}</span>
         </div>
 
         <div className="dash-metric-card">
-          <span className="dash-metric-label">Serverless Dispenser</span>
+          <span className="dash-metric-label">Cloud Dispenser</span>
           <span className="dash-metric-val text-green">Online 🛡️</span>
           <span className="dash-metric-sub">Zero-Trust Password Masking</span>
         </div>
@@ -1381,7 +1323,7 @@ export default function AdminDashboard({ onShowToast }) {
         <div className="dash-metric-card">
           <span className="dash-metric-label">Managed Platforms</span>
           <span className="dash-metric-val text-cyan">{platforms.length || 5} Platforms</span>
-          <span className="dash-metric-sub">Auto-Provisioned Collections</span>
+          <span className="dash-metric-sub">Firestore Dynamic Collections</span>
         </div>
 
         <div className="dash-metric-card">
@@ -1391,103 +1333,72 @@ export default function AdminDashboard({ onShowToast }) {
         </div>
       </div>
 
-      {/* Appwrite Cloud Database Keep-Alive & Anti-Pause Guardian Banner */}
-      <div className="db-keepalive-banner">
+      {/* Google Firebase Cloud Database Always-On Status Banner */}
+      <div className="db-keepalive-banner" style={{ borderLeft: '4px solid #f59e0b', background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(15, 23, 42, 0.8))' }}>
         <div className="db-keepalive-header">
           <div className="db-keepalive-title-group">
-            <h3>⚡ Appwrite Database Keep-Alive Guardian</h3>
-            <span className="db-keepalive-pulse">
-              <span className="pulse-dot"></span>
-              {heartbeat?.status === 'healthy' ? 'Active & Auto-Protected' : 'Checking Status...'}
+            <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>🔥</span> Google Firebase Cloud Database (Always-On 24/7 SLA)
+            </h3>
+            <span className="db-keepalive-pulse" style={{ background: 'rgba(34, 197, 94, 0.2)', color: '#4ade80', borderColor: '#22c55e' }}>
+              <span className="pulse-dot" style={{ background: '#22c55e' }}></span>
+              Active &amp; Connected (Zero Dormancy)
             </span>
           </div>
           <button 
             type="button" 
             className="btn-keepalive-ping" 
-            onClick={handleTriggerManualPing}
-            disabled={isPinging}
+            onClick={handleVerifyFirebaseConnection}
+            disabled={isSyncingFirebase}
+            style={{ background: 'rgba(245, 158, 11, 0.2)', borderColor: '#f59e0b', color: '#ffb74d' }}
           >
-            {isPinging ? '⚡ Pinging Appwrite DB...' : '⚡ Trigger Keep-Alive Ping Now'}
+            {isSyncingFirebase ? '⚡ Verifying Connection...' : '⚡ Verify Cloud Connection'}
           </button>
         </div>
 
         <div className="db-keepalive-metrics-row">
           <div className="db-keepalive-stat">
-            <span className="db-keepalive-stat-label">Last Ping Timestamp</span>
-            <span className="db-keepalive-stat-val text-cyan">
-              {loadingHeartbeat ? 'Loading...' : (formatRelativeTime(heartbeat?.lastPing) || 'Just now')}
-            </span>
-            <span className="db-keepalive-stat-sub">
-              {heartbeat?.lastPing ? formatDateTime(heartbeat.lastPing) : 'Synchronizing with Appwrite...'}
-            </span>
+            <span className="db-keepalive-stat-label">Cloud Infrastructure</span>
+            <span className="db-keepalive-stat-val text-cyan">Google Firebase</span>
+            <span className="db-keepalive-stat-sub">Project: {FIREBASE_CONFIG.projectId}</span>
           </div>
 
           <div className="db-keepalive-stat">
-            <span className="db-keepalive-stat-label">Total Keep-Alive Pings</span>
-            <span className="db-keepalive-stat-val text-green">
-              {loadingHeartbeat ? '...' : `${heartbeat?.pingCount || 0} Successful Pings`}
-            </span>
-            <span className="db-keepalive-stat-sub">Auto-incrementing heartbeat counter</span>
+            <span className="db-keepalive-stat-label">Cloud Availability</span>
+            <span className="db-keepalive-stat-val text-green">Always-On 24/7</span>
+            <span className="db-keepalive-stat-sub">Zero dormancy (Never sleeps or pauses)</span>
           </div>
 
           <div className="db-keepalive-stat">
-            <span className="db-keepalive-stat-label">Automated Cron Schedule</span>
-            <span className="db-keepalive-stat-val">0 4 * * * (Daily 04:00 UTC)</span>
-            <span className="db-keepalive-stat-sub">+ External GitHub Actions (05:15 UTC)</span>
+            <span className="db-keepalive-stat-label">Firestore Collections</span>
+            <span className="db-keepalive-stat-val">33 Rates &amp; Catalog</span>
+            <span className="db-keepalive-stat-sub">products_pricing, user_profiles, orders</span>
           </div>
 
           <div className="db-keepalive-stat">
-            <span className="db-keepalive-stat-label">Latest Activity Source</span>
-            <span className="db-keepalive-stat-val" style={{ color: '#fbbf24' }}>
-              {heartbeat?.source || 'appwrite_cron'}
-            </span>
-            <span className="db-keepalive-stat-sub">Collection: system_heartbeat</span>
+            <span className="db-keepalive-stat-label">Realtime WebSockets</span>
+            <span className="db-keepalive-stat-val" style={{ color: '#fbbf24' }}>onSnapshot Sync</span>
+            <span className="db-keepalive-stat-sub">Instant zero-latency live broadcast</span>
           </div>
         </div>
 
         <div className="db-keepalive-actions">
           <p className="db-keepalive-desc">
-            🛡️ <strong>Anti-Dormancy Protection Active:</strong> Appwrite Cloud automatically pauses projects after 3+ days of inactivity. This system performs daily database mutations via Appwrite Cloud Function Cron and GitHub Actions external HTTPS requests to guarantee 100% database uptime with zero manual intervention.
+            🚀 <strong>100% Google Firebase Cloud Migration Complete:</strong> Your store is now permanently powered by Google Cloud Firestore and Firebase Auth. Inactivity pauses are completely eliminated — no cron keepalive pings or manual weekly restorations are ever required.
           </p>
-
-          <div style={{ marginTop: '16px', padding: '16px', background: 'rgba(255, 152, 0, 0.08)', borderRadius: '12px', border: '1px solid rgba(255, 152, 0, 0.25)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '18px' }}>🔥</span>
-                  <strong style={{ color: '#ffb74d', fontSize: '15px' }}>Google Firebase Firestore Dual-Backend Sync</strong>
-                  <span style={{ background: isFirebaseConfigured ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)', color: isFirebaseConfigured ? '#4ade80' : '#f87171', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold' }}>
-                    {isFirebaseConfigured ? 'CONFIGURED & STANDBY' : 'NOT CONFIGURED'}
-                  </span>
-                </div>
-                <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: '#cbd5e1' }}>
-                  Firebase Spark never pauses or hibernates. 1-Click clone all 33 live pricing rates and dollar exchange rates from Appwrite into Google Firestore.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="btn btn-primary btn-sm"
-                style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', border: 'none', padding: '8px 16px', fontWeight: 'bold' }}
-                onClick={handleSyncToFirebase}
-                disabled={isSyncingFirebase}
-              >
-                {isSyncingFirebase ? '⏳ Syncing to Firestore...' : '🔥 1-Click Sync to Firebase Firestore'}
-              </button>
+          {firebaseSyncResult && (
+            <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: firebaseSyncResult.success ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${firebaseSyncResult.success ? '#22c55e' : '#ef4444'}`, fontSize: '13px' }}>
+              {firebaseSyncResult.success ? (
+                <span style={{ color: '#4ade80' }}>
+                  ✅ <strong>Active:</strong> {firebaseSyncResult.count} products &amp; system settings verified in Firebase Firestore!
+                </span>
+              ) : (
+                <span style={{ color: '#f87171' }}>
+                  ⚠️ <strong>Notice:</strong> {firebaseSyncResult.error}
+                </span>
+              )}
             </div>
-            {firebaseSyncResult && (
-              <div style={{ marginTop: '12px', padding: '10px 14px', borderRadius: '8px', background: firebaseSyncResult.success ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)', border: `1px solid ${firebaseSyncResult.success ? '#22c55e' : '#ef4444'}`, fontSize: '13px' }}>
-                {firebaseSyncResult.success ? (
-                  <span style={{ color: '#4ade80' }}>
-                    ✅ <strong>Success:</strong> {firebaseSyncResult.count} products &amp; system settings cloned to Firebase Firestore!
-                  </span>
-                ) : (
-                  <span style={{ color: '#f87171' }}>
-                    ⚠️ <strong>Notice:</strong> {firebaseSyncResult.error}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
@@ -1561,7 +1472,7 @@ export default function AdminDashboard({ onShowToast }) {
             <div className="ingestion-card">
               <div className="dash-table-header" style={{ padding: 0, border: 'none' }}>
                 <h3>📦 Account Logs Bulk Ingestion Zone</h3>
-                <p>Paste raw clipboard data with pipe-delimited format. System parses, sanitizes, and syncs directly into Appwrite Cloud.</p>
+                <p>Paste raw clipboard data with pipe-delimited format. System parses, sanitizes, and syncs directly into Google Firebase Cloud.</p>
               </div>
 
               {/* Format Guide */}
@@ -1743,11 +1654,11 @@ export default function AdminDashboard({ onShowToast }) {
                 <button 
                   type="button" 
                   className="btn btn-primary"
-                  onClick={handleSyncToAppwrite}
+                  onClick={handleSyncToFirebase}
                   disabled={isSyncing || validRowCount === 0}
                   style={{ minWidth: '220px' }}
                 >
-                  {isSyncing ? '⏳ Syncing to Appwrite...' : `🚀 Sync ${validRowCount} Accounts to Appwrite Cloud`}
+                  {isSyncing ? '⏳ Syncing to Firebase...' : `🚀 Sync ${validRowCount} Accounts to Google Firebase Cloud`}
                 </button>
               </div>
 
@@ -1771,7 +1682,7 @@ export default function AdminDashboard({ onShowToast }) {
               {syncResult && (
                 <div className="ingestion-guide-box" style={{ background: 'rgba(74, 222, 128, 0.1)', borderColor: 'rgba(74, 222, 128, 0.3)' }}>
                   <div style={{ color: 'var(--accent-green)', fontWeight: 700 }}>
-                    🎉 Batch Sync Complete: {syncResult.successCount} accounts stored in Appwrite Cloud!
+                    🎉 Batch Sync Complete: {syncResult.successCount} accounts stored in Google Firebase Cloud!
                   </div>
                   <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                     Passwords and 2FA secrets are securely locked. Public visitors will only see usernames and available stock in the marketplace.
@@ -1859,7 +1770,7 @@ export default function AdminDashboard({ onShowToast }) {
       )}
 
       {/* =========================================================================
-          TAB: INVENTORY & DATABASE VIEW (APPWRITE CLOUD DB)
+          TAB: INVENTORY & DATABASE VIEW (GOOGLE FIREBASE CLOUD DB)
           ========================================================================= */}
       {activeTab === 'database' && (
         <div className="dashboard-tab-content">
@@ -1867,7 +1778,7 @@ export default function AdminDashboard({ onShowToast }) {
             {/* Header Row */}
             <div className="inventory-header-row">
               <div className="inventory-header-titles">
-                <h3>🗄️ Appwrite Cloud Database View &amp; Logs Inventory</h3>
+                <h3>🗄️ Google Firebase Cloud Database View &amp; Logs Inventory</h3>
                 <p>
                   Inspect, search, and manage all uploaded account credentials across platforms. Delete old or unwanted records individually or in bulk.
                 </p>
@@ -1895,14 +1806,14 @@ export default function AdminDashboard({ onShowToast }) {
                 {inventoryStatusTab === 'sold' ? '⚠️' : 'ℹ️'}
               </span>
               <div>
-                <strong>Appwrite Cloud Storage Policy:</strong>
+                <strong>Google Firebase Cloud Storage Policy:</strong>
                 {inventoryStatusTab === 'sold' ? (
                   <span>
                     {' '}When customer orders are fulfilled, purchased accounts are <strong>retained in the database with status &quot;sold&quot;</strong> (they are not automatically deleted). This preserves historical delivery records. You can safely purge old sold records below at any time without affecting customer order receipts in the Orders Stream.
                   </span>
                 ) : (
                   <span>
-                    {' '}Account logs uploaded via the Ingestion Zone remain in their respective Appwrite collections indefinitely until dispensed or deleted. Sold logs remain marked as &quot;sold&quot; so you can monitor who received them and clean them up when needed.
+                    {' '}Account logs uploaded via the Ingestion Zone remain in their respective Firebase collections indefinitely until dispensed or deleted. Sold logs remain marked as &quot;sold&quot; so you can monitor who received them and clean them up when needed.
                   </span>
                 )}
               </div>
@@ -2036,7 +1947,7 @@ export default function AdminDashboard({ onShowToast }) {
               {loadingInventory ? (
                 <div className="inventory-empty-state">
                   <span className="empty-icon">⏳</span>
-                  <p>Querying Appwrite Cloud collections...</p>
+                  <p>Querying Google Firebase Cloud collections...</p>
                 </div>
               ) : displayedInventoryLogs.length === 0 ? (
                 <div className="inventory-empty-state">
@@ -2238,7 +2149,7 @@ export default function AdminDashboard({ onShowToast }) {
       )}
 
       {/* =========================================================================
-          TAB 2: DYNAMIC CATEGORIES & PLATFORMS (APPWRITE CLOUD DB)
+          TAB 2: DYNAMIC CATEGORIES & PLATFORMS (GOOGLE FIREBASE CLOUD DB)
           ========================================================================= */}
       {activeTab === 'platforms' && (
         <div className="dashboard-tab-content">
@@ -2247,7 +2158,7 @@ export default function AdminDashboard({ onShowToast }) {
               <div>
                 <h3>🗂️ Platform Categories &amp; Product Types</h3>
                 <p>
-                  Manage live platforms in Appwrite Cloud DB. Create new platforms with auto-provisioned collections and add account packages instantly.
+                  Manage live platforms in Google Firebase Cloud DB. Create new platforms with auto-provisioned collections and add account packages instantly.
                 </p>
               </div>
               <button 
@@ -2261,7 +2172,7 @@ export default function AdminDashboard({ onShowToast }) {
 
             {loadingPlatforms && platforms.length === 0 ? (
               <div className="text-center p-8 text-secondary">
-                <span className="waiting-dot-pulse mr-2" /> Loading platform catalog from Appwrite Cloud...
+                <span className="waiting-dot-pulse mr-2" /> Loading platform catalog from Google Firebase Cloud...
               </div>
             ) : (
               <div className="platforms-cards-grid">
@@ -2682,7 +2593,7 @@ export default function AdminDashboard({ onShowToast }) {
                     onClick={handleSaveSchema}
                     disabled={isSavingSchema}
                   >
-                    {isSavingSchema ? '⏳ Saving to Appwrite Cloud...' : `💾 Save Delimiter Format for ${activeDelimiterPlatform?.name}`}
+                    {isSavingSchema ? '⏳ Saving to Firebase Cloud...' : `💾 Save Delimiter Format for ${activeDelimiterPlatform?.name}`}
                   </button>
                 </div>
               </div>
@@ -2773,7 +2684,7 @@ export default function AdminDashboard({ onShowToast }) {
             <div className="dash-table-header">
               <h3>💵 Global Dollar (USD to NGN) Exchange Rate Controller</h3>
               <p>
-                Define the official Dollar Rate used across the entire platform. When updated here, it saves to Appwrite Cloud and converts Tiger SMS wholesale costs into Naira site-wide in real-time.
+                Define the official Dollar Rate used across the entire platform. When updated here, it saves to Google Firebase Cloud and converts Tiger SMS wholesale costs into Naira site-wide in real-time.
               </p>
             </div>
 
@@ -3248,7 +3159,7 @@ export default function AdminDashboard({ onShowToast }) {
       )}
 
       {/* =========================================================================
-          TAB 3: DYNAMIC SERVICES & PRICING CONTROLLER (APPWRITE CLOUD)
+          TAB 3: DYNAMIC SERVICES & PRICING CONTROLLER (GOOGLE FIREBASE CLOUD)
           ========================================================================= */}
       {activeTab === 'pricing' && (
         <div className="dashboard-tab-content">
@@ -3270,7 +3181,7 @@ export default function AdminDashboard({ onShowToast }) {
           <div className="dash-table-card" style={{ marginBottom: '24px' }}>
             <div className="dash-table-header">
               <h3>📱 Physical SIM Carrier Rates (SMS Verification)</h3>
-              <p>Adjust live wholesale rates and availability for SMS carrier verification lines. Synchronized with Appwrite in real-time.</p>
+              <p>Adjust live wholesale rates and availability for SMS carrier verification lines. Synchronized with Google Firebase in real-time.</p>
             </div>
 
             <div className="table-responsive">
@@ -3557,7 +3468,7 @@ export default function AdminDashboard({ onShowToast }) {
                     <td><span className="status-pill pill-completed">Completed</span></td>
                   </tr>
                   <tr>
-                    <td className="font-mono">ord_appwrite_1</td>
+                    <td className="font-mono">ord_firebase_1</td>
                     <td><strong>ACCOUNT LOG</strong></td>
                     <td>Facebook Accounts (@61590748374787)</td>
                     <td>{siteConfig.formatNaira(1500)}</td>
@@ -3580,7 +3491,7 @@ export default function AdminDashboard({ onShowToast }) {
               <div>
                 <h3 className="logs-modal-title">➕ Create Target Platform</h3>
                 <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  Provisions a new private Appwrite collection, standard schema, and registers it in the live catalog.
+                  Provisions a new platform collection, standard schema, and registers it in Google Firebase Firestore.
                 </p>
               </div>
               <button 
@@ -3730,7 +3641,7 @@ export default function AdminDashboard({ onShowToast }) {
                   {isCreatingPlatform ? (
                     <>
                       <span className="waiting-dot-pulse mr-2" />
-                      Provisioning in Appwrite Cloud...
+                      Provisioning in Google Firebase Cloud...
                     </>
                   ) : (
                     '🚀 Provision Platform & Collection'

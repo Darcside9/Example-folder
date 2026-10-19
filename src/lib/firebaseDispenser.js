@@ -1,14 +1,31 @@
 // ==========================================================================
-// CHRIS SHOPPER — APPWRITE SERVERLESS DISPENSER & INVENTORY BRIDGE
+// CHRIS SHOPPER — GOOGLE FIREBASE DISPENSER & INVENTORY BRIDGE
 // Provides zero-trust inventory querying, single-buyer credential dispensing,
 // atomic wallet balance deductions, shopping cart bulk dispensing,
 // and 30-day automatic credential retention management.
 // ==========================================================================
 
-import { APPWRITE_CONFIG, functions, databases, Query, ID } from './appwrite';
+import { 
+  db, 
+  FIREBASE_COLLECTIONS,
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  addDoc, 
+  updateDoc, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  serverTimestamp,
+  writeBatch 
+} from './firebase';
 import { PLATFORM_CATEGORIES, DEFAULT_SEED_INVENTORY } from '../data/sampleLogsData';
 import { fetchLivePricing } from './pricingService';
 import { fetchDynamicPlatforms } from './platformsService';
+import { firebaseUpdateUserBalance } from './firebaseAuth';
 
 const PURCHASES_STORAGE_KEY = 'cs_purchased_logs';
 const CLAIMED_STORAGE_KEY = 'cs_claimed_logs';
@@ -132,7 +149,6 @@ export function getPurchasedLogs(userId = null) {
 export function savePurchasedLog(record) {
   try {
     const list = getPurchasedLogs();
-    // Avoid duplicate records
     const exists = list.some(l => l.id === record.id || (l.username === record.username && l.platformId === record.platformId));
     if (!exists) {
       list.unshift(record);
@@ -144,46 +160,44 @@ export function savePurchasedLog(record) {
 }
 
 /**
- * Fetch past purchased account logs for user, seamlessly combining
- * Appwrite Cloud DB orders with local storage credentials and enforcing 30-day retention.
+ * Fetch past purchased account logs for user from Firestore orders
  */
 export async function fetchUserPurchasedLogs(userId = null) {
   const localLogs = getPurchasedLogs(userId);
 
-  if (!userId) {
+  if (!userId || !db) {
     return localLogs;
   }
 
   try {
-    // 1. Fetch official purchased account logs from Appwrite Cloud DB orders
-    const cloudOrders = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.orders,
-      [
-        Query.equal('user_id', userId),
-        Query.equal('product_type', 'account_log'),
-        Query.orderDesc('$createdAt'),
-        Query.limit(100)
-      ]
+    const colRef = collection(db, FIREBASE_COLLECTIONS.orders);
+    const q = query(
+      colRef,
+      where('user_id', '==', userId),
+      where('product_type', '==', 'account_log')
     );
+    const snap = await getDocs(q);
 
-    const cloudLogs = cloudOrders.documents.map(d => {
+    const cloudLogs = snap.docs.map(d => {
+      const data = d.data();
       let det = {};
       try {
-        if (d.details) det = typeof d.details === 'string' ? JSON.parse(d.details) : d.details;
+        if (data.details) det = typeof data.details === 'string' ? JSON.parse(data.details) : data.details;
       } catch {}
 
       const platformName = det.platform 
         ? (det.platform.charAt(0).toUpperCase() + det.platform.slice(1))
-        : (d.item_name ? d.item_name.split(' ')[0] : 'Account');
+        : (data.item_name ? data.item_name.split(' ')[0] : 'Account');
+
+      const createdAtStr = data.created_at?.toDate ? data.created_at.toDate().toISOString() : (data.created_at || new Date().toISOString());
 
       return {
-        id: d.$id,
+        id: d.id,
         platform: platformName,
         platformId: det.platformId || det.platform || 'account',
         subTypeId: det.subTypeId || '',
-        subTypeTitle: det.subTypeTitle || d.item_name || '',
-        username: det.username || d.reference,
+        subTypeTitle: det.subTypeTitle || data.item_name || '',
+        username: det.username || data.reference,
         password: det.password || '',
         twoFactorKey: det.twoFactorKey || '',
         mail: det.mail || '',
@@ -191,17 +205,15 @@ export async function fetchUserPurchasedLogs(userId = null) {
         rawRecord: det.rawRecord || '',
         extraData: det.extraData || null,
         rulesNotes: det.rulesNotes || '',
-        comboString: det.rawRecord || det.comboString || (det.password ? `${det.username || d.reference}:${det.password}` : `${det.username || d.reference}`),
-        price: Number(d.price || det.price || 0),
-        purchasedAt: d.$createdAt,
-        userId: d.user_id
+        comboString: det.rawRecord || det.comboString || (det.password ? `${det.username || data.reference}:${det.password}` : `${det.username || data.reference}`),
+        price: Number(data.price || det.price || 0),
+        purchasedAt: createdAtStr,
+        userId: data.user_id
       };
     });
 
-    // 2. Merge: cloud orders guarantee complete history across browsers/devices,
-    // local cache supplies any local-only credential details if cloud lacked them.
+    // Merge local and cloud records
     const merged = [...localLogs];
-
     for (const cl of cloudLogs) {
       const matchIdx = merged.findIndex(
         l => l.id === cl.id || (l.username === cl.username && (l.platformId === cl.platformId || l.platform === cl.platform))
@@ -211,7 +223,6 @@ export async function fetchUserPurchasedLogs(userId = null) {
         merged[matchIdx] = {
           ...cl,
           ...merged[matchIdx],
-          // Ensure credentials from either source are maintained
           password: merged[matchIdx].password || cl.password || '',
           twoFactorKey: merged[matchIdx].twoFactorKey || cl.twoFactorKey || '',
           mail: merged[matchIdx].mail || cl.mail || '',
@@ -228,27 +239,24 @@ export async function fetchUserPurchasedLogs(userId = null) {
       }
     }
 
-    // 3. Filter out expired logs (30-day retention policy)
     const validLogs = merged.filter(item => {
       const exp = getLogExpiryInfo(item.purchasedAt);
       return !exp.isExpired;
     });
 
-    // Update local storage cache for instant offline hydration
     try {
       localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify(validLogs));
     } catch {}
 
     return validLogs;
   } catch (err) {
-    console.warn('Notice syncing cloud purchased logs:', err.message);
+    console.warn('Notice syncing Firestore purchased logs:', err.message);
     return localLogs;
   }
 }
 
 /**
- * Fetch available account logs for catalog browsing.
- * Calculates dynamic stock counts for both main categories and individual types.
+ * Fetch available account logs for catalog browsing from Firestore.
  */
 export async function fetchAvailableAccountLogs(platformId = null) {
   let allPlatforms = [];
@@ -262,7 +270,7 @@ export async function fetchAvailableAccountLogs(platformId = null) {
     ? allPlatforms.filter(c => c.id === platformId)
     : allPlatforms;
 
-  // 1. Fetch live product pricing from Appwrite Cloud DB
+  // 1. Fetch live product pricing from Firebase Firestore
   let livePricing = [];
   try {
     livePricing = await fetchLivePricing();
@@ -275,65 +283,39 @@ export async function fetchAvailableAccountLogs(platformId = null) {
 
   for (const cat of targetPlatforms) {
     let availableAccounts = [];
-    const colId = cat.collectionId || APPWRITE_CONFIG.collections[cat.id];
+    const colName = cat.collectionId || cat.id;
 
-    // Find live base price configured by admin for this platform
+    // Live base price configured by admin
     const platformPricing = (livePricing || []).find(p => p.product_id === cat.id);
     const platformBasePrice = platformPricing?.price_usd !== undefined 
       ? Number(platformPricing.price_usd) 
       : Number(cat.demoPrice || 1500);
 
-    if (colId) {
-      // 2. Attempt execution of Appwrite Serverless Dispenser Function
+    if (db && colName) {
       try {
-        const execution = await functions.createExecution(
-          APPWRITE_CONFIG.functionId,
-          JSON.stringify({
-            action: 'list_available',
-            platformId: cat.id
-          }),
-          false
-        );
+        const colRef = collection(db, colName);
+        const q = query(colRef, where('status', '==', 'available'), limit(100));
+        const snap = await getDocs(q);
 
-        if (execution && execution.responseBody) {
-          const parsed = JSON.parse(execution.responseBody);
-          if (parsed.success && Array.isArray(parsed.accounts)) {
-            availableAccounts = parsed.accounts.map(acc => ({
-              ...acc,
-              rawRecord: acc.rawRecord || acc.raw_record || '',
-              extraData: acc.extraData || (acc.custom_data ? (typeof acc.custom_data === 'string' ? JSON.parse(acc.custom_data) : acc.custom_data) : null),
-              rulesNotes: acc.rulesNotes || acc.rules_notes || '',
-              price: acc.price !== undefined ? Number(acc.price) : platformBasePrice
-            }));
-          }
+        if (!snap.empty) {
+          availableAccounts = snap.docs.map(d => {
+            const data = d.data();
+            return {
+              id: d.id,
+              username: data.username,
+              subTypeId: data.sub_type_id,
+              subTypeTitle: data.sub_type_title,
+              price: data.price !== undefined ? Number(data.price) : platformBasePrice,
+              status: data.status,
+              rawRecord: data.raw_record || '',
+              extraData: data.custom_data ? (typeof data.custom_data === 'string' ? JSON.parse(data.custom_data) : data.custom_data) : null,
+              rulesNotes: data.rules_notes || '',
+              isAvailable: true
+            };
+          });
         }
-      } catch (funcErr) {
-        // Fallback to direct sanitized query if function execution is unavailable
-        try {
-          const direct = await databases.listDocuments(
-            APPWRITE_CONFIG.databaseId,
-            colId,
-            [
-              Query.equal('status', 'available'),
-              Query.select(['username', 'sub_type_id', 'sub_type_title', 'price', 'status', 'raw_record', 'custom_data', 'rules_notes']),
-              Query.limit(100)
-            ]
-          );
-          availableAccounts = direct.documents.map(d => ({
-            id: d.$id,
-            username: d.username,
-            subTypeId: d.sub_type_id,
-            subTypeTitle: d.sub_type_title,
-            price: d.price !== undefined ? Number(d.price) : platformBasePrice,
-            status: d.status,
-            rawRecord: d.raw_record || '',
-            extraData: d.custom_data ? (typeof d.custom_data === 'string' ? JSON.parse(d.custom_data) : d.custom_data) : null,
-            rulesNotes: d.rules_notes || '',
-            isAvailable: true
-          }));
-        } catch (dbErr) {
-          // Collection is private or direct query restricted
-        }
+      } catch (dbErr) {
+        // Platform collection might not have docs yet; fallback to seed
       }
     }
 
@@ -345,7 +327,7 @@ export async function fetchAvailableAccountLogs(platformId = null) {
         ((cat.items || []).length === 1)
       );
 
-      // If no live documents in Appwrite collection for this subType, fallback to structured seed inventory
+      // If no live documents in collection for this subType, fallback to seed inventory
       if (matchingAccounts.length === 0 && DEFAULT_SEED_INVENTORY[cat.id]?.[subType.id]) {
         const seedBatch = DEFAULT_SEED_INVENTORY[cat.id][subType.id];
         matchingAccounts = seedBatch.map(sa => ({
@@ -355,7 +337,6 @@ export async function fetchAvailableAccountLogs(platformId = null) {
           isAvailable: !claimedUsernames.includes(sa.username)
         }));
       } else {
-        // For accounts from live Appwrite, ensure local claimed check
         matchingAccounts = matchingAccounts.map(a => ({
           ...a,
           isAvailable: a.status === 'available' && !claimedUsernames.includes(a.username)
@@ -393,9 +374,7 @@ export async function fetchAvailableAccountLogs(platformId = null) {
 }
 
 /**
- * Purchase a single selected account log:
- * Executes the serverless dispenser function or verified local inventory fallback,
- * deducts funds atomically, marks status as sold, and returns full credentials.
+ * Purchase a single selected account log from Firebase Firestore
  */
 export async function dispenseSpecificAccountLog({
   username,
@@ -406,107 +385,26 @@ export async function dispenseSpecificAccountLog({
   currentBalance,
   price
 }) {
-  let colId = APPWRITE_CONFIG.collections[platformId];
-  if (!colId) {
-    try {
-      const allPlatforms = await fetchDynamicPlatforms();
-      const p = allPlatforms.find(x => x.id === platformId);
-      if (p) colId = p.collectionId;
-    } catch {}
-  }
-
+  const colName = platformId;
   const requiredPrice = Number(price !== undefined ? price : 1500);
 
   if (Number(currentBalance || 0) < requiredPrice) {
     throw new Error(`Insufficient wallet balance (₦${Number(currentBalance || 0).toLocaleString('en-NG')} available, ₦${requiredPrice.toLocaleString('en-NG')} required). Please top up.`);
   }
 
-  // 1. Execute Serverless Function 'log-dispenser'
-  try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'purchase_log',
-        platformId,
-        subTypeId,
-        username,
-        userId,
-        userEmail,
-        currentBalance: Number(currentBalance || 0),
-        price: requiredPrice
-      }),
-      false
-    );
+  // 1. Direct check in Firestore collection
+  if (db && colName) {
+    try {
+      const colRef = collection(db, colName);
+      const q = query(colRef, where('username', '==', username), where('status', '==', 'available'), limit(1));
+      const snap = await getDocs(q);
 
-    if (execution && execution.responseBody) {
-      const result = JSON.parse(execution.responseBody);
-      if (result.success && result.credential) {
-        markUsernameClaimed(username);
-        const cred = {
-          ...result.credential,
-          rawRecord: result.credential.rawRecord || result.credential.raw_record || '',
-          extraData: result.credential.extraData || (result.credential.custom_data ? (typeof result.credential.custom_data === 'string' ? JSON.parse(result.credential.custom_data) : result.credential.custom_data) : null),
-          rulesNotes: result.credential.rulesNotes || result.credential.rules_notes || '',
-          comboString: result.credential.rawRecord || result.credential.raw_record || result.credential.comboString || '',
-          userId,
-          price: result.credential.price || requiredPrice,
-          purchasedAt: result.credential.purchasedAt || new Date().toISOString()
-        };
-        savePurchasedLog(cred);
+      if (!snap.empty) {
+        const foundDoc = snap.docs[0];
+        const docData = foundDoc.data();
 
-        if (result.newBalance !== undefined) {
-          try {
-            const rawUser = localStorage.getItem('cs_user');
-            if (rawUser) {
-              const u = JSON.parse(rawUser);
-              u.balance = result.newBalance;
-              localStorage.setItem('cs_user', JSON.stringify(u));
-            }
-          } catch {}
-        }
-
-        return { 
-          success: true, 
-          credential: cred,
-          newBalance: result.newBalance 
-        };
-      } else if (result.error) {
-        throw new Error(result.error);
-      }
-    }
-  } catch (err) {
-    if (err.message && (
-      err.message.includes('Insufficient') || 
-      err.message.includes('Missing required')
-    )) {
-      throw err;
-    }
-    if (err.message && err.message.includes('no longer available')) {
-      const isClaimedLocally = getClaimedUsernames().includes(username);
-      const existsInSeed = !!(
-        DEFAULT_SEED_INVENTORY[platformId]?.[subTypeId]?.some(a => a.username === username) ||
-        (DEFAULT_SEED_INVENTORY[platformId] && Object.values(DEFAULT_SEED_INVENTORY[platformId]).flat().some(a => a.username === username))
-      );
-      if (isClaimedLocally || !existsInSeed) {
-        throw err;
-      }
-      // If it exists in seed and is not claimed locally, continue to local fallback
-    }
-    console.warn('Dispenser function notice:', err.message);
-  }
-
-  // 2. Direct Fallback if Function execution is unavailable
-  try {
-    if (colId) {
-      const found = await databases.listDocuments(APPWRITE_CONFIG.databaseId, colId, [
-        Query.equal('username', username),
-        Query.equal('status', 'available'),
-        Query.limit(1)
-      ]);
-
-      if (found.documents.length > 0) {
-        const doc = found.documents[0];
-        await databases.updateDocument(APPWRITE_CONFIG.databaseId, colId, doc.$id, {
+        // Mark as sold in Firestore
+        await updateDoc(doc(db, colName, foundDoc.id), {
           status: 'sold',
           sold_to_user_id: userId,
           sold_to_email: userEmail || '',
@@ -521,16 +419,16 @@ export async function dispenseSpecificAccountLog({
           platform: platformId.charAt(0).toUpperCase() + platformId.slice(1),
           platformId,
           subTypeId,
-          subTypeTitle: doc.sub_type_title || '',
-          username: doc.username,
-          password: doc.password,
-          twoFactorKey: doc.two_factor_key,
-          mail: doc.mail,
-          mailPassword: doc.mail_password,
-          rawRecord: doc.raw_record || '',
-          extraData: doc.custom_data ? (typeof doc.custom_data === 'string' ? JSON.parse(doc.custom_data) : doc.custom_data) : null,
-          rulesNotes: doc.rules_notes || '',
-          comboString: doc.raw_record || `${doc.username}:${doc.password}:${doc.mail || ''}:${doc.mail_password || ''}:${doc.two_factor_key || ''}`,
+          subTypeTitle: docData.sub_type_title || '',
+          username: docData.username,
+          password: docData.password,
+          twoFactorKey: docData.two_factor_key,
+          mail: docData.mail,
+          mailPassword: docData.mail_password,
+          rawRecord: docData.raw_record || '',
+          extraData: docData.custom_data ? (typeof docData.custom_data === 'string' ? JSON.parse(docData.custom_data) : docData.custom_data) : null,
+          rulesNotes: docData.rules_notes || '',
+          comboString: docData.raw_record || `${docData.username}:${docData.password}:${docData.mail || ''}:${docData.mail_password || ''}:${docData.two_factor_key || ''}`,
           price: requiredPrice,
           purchasedAt: new Date().toISOString(),
           userId
@@ -538,28 +436,26 @@ export async function dispenseSpecificAccountLog({
 
         savePurchasedLog(credential);
 
-        // Record in Appwrite orders collection
+        // Record in Firestore orders collection
         try {
-          if (userId && APPWRITE_CONFIG.collections.orders) {
-            await databases.createDocument(
-              APPWRITE_CONFIG.databaseId,
-              APPWRITE_CONFIG.collections.orders,
-              ID.unique(),
-              {
-                user_id: userId,
-                user_email: userEmail || '',
-                product_type: 'account_log',
-                item_name: `${credential.subTypeTitle || credential.platform} (@${credential.username})`,
-                reference: credential.username,
-                price: Number(requiredPrice),
-                status: 'completed',
-                details: JSON.stringify(credential)
-              }
-            );
-          }
+          const ordersCol = collection(db, FIREBASE_COLLECTIONS.orders);
+          await addDoc(ordersCol, {
+            user_id: userId,
+            user_email: userEmail || '',
+            product_type: 'account_log',
+            item_name: `${credential.subTypeTitle || credential.platform} (@${credential.username})`,
+            reference: credential.username,
+            price: Number(requiredPrice),
+            status: 'completed',
+            details: JSON.stringify(credential),
+            created_at: serverTimestamp()
+          });
         } catch (ordErr) {
-          console.warn('Notice saving order document in Appwrite:', ordErr.message);
+          console.warn('Notice saving order document in Firebase:', ordErr.message);
         }
+
+        // Deduct balance in Firestore
+        await firebaseUpdateUserBalance(userId, newBalance);
 
         try {
           const rawUser = localStorage.getItem('cs_user');
@@ -570,14 +466,18 @@ export async function dispenseSpecificAccountLog({
           }
         } catch {}
 
+        try {
+          window.dispatchEvent(new CustomEvent('balance-updated', { detail: { balance: newBalance } }));
+        } catch {}
+
         return { success: true, credential, newBalance };
       }
+    } catch (dbErr) {
+      console.warn('Firestore direct query notice:', dbErr.message);
     }
-  } catch (dbErr) {
-    console.warn('Database direct query fallback notice:', dbErr.message);
   }
 
-  // 3. Fallback to DEFAULT_SEED_INVENTORY
+  // 2. Fallback to DEFAULT_SEED_INVENTORY
   const claimedList = getClaimedUsernames();
   if (claimedList.includes(username)) {
     throw new Error(`Account @${username} was just claimed. Please choose another username.`);
@@ -588,15 +488,12 @@ export async function dispenseSpecificAccountLog({
     seedMatch = DEFAULT_SEED_INVENTORY[platformId][subTypeId].find(a => a.username === username);
   }
 
-  if (!seedMatch) {
-    // Check across all subTypes of this platform
-    if (DEFAULT_SEED_INVENTORY[platformId]) {
-      for (const stKey of Object.keys(DEFAULT_SEED_INVENTORY[platformId])) {
-        const found = DEFAULT_SEED_INVENTORY[platformId][stKey].find(a => a.username === username);
-        if (found) {
-          seedMatch = found;
-          break;
-        }
+  if (!seedMatch && DEFAULT_SEED_INVENTORY[platformId]) {
+    for (const stKey of Object.keys(DEFAULT_SEED_INVENTORY[platformId])) {
+      const found = DEFAULT_SEED_INVENTORY[platformId][stKey].find(a => a.username === username);
+      if (found) {
+        seedMatch = found;
+        break;
       }
     }
   }
@@ -626,27 +523,25 @@ export async function dispenseSpecificAccountLog({
 
   savePurchasedLog(credential);
 
-  // Record in Appwrite orders collection
-  try {
-    if (userId && APPWRITE_CONFIG.collections.orders) {
-      await databases.createDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.orders,
-        ID.unique(),
-        {
-          user_id: userId,
-          user_email: userEmail || '',
-          product_type: 'account_log',
-          item_name: `${credential.subTypeTitle || credential.platform} (@${credential.username})`,
-          reference: credential.username,
-          price: Number(requiredPrice),
-          status: 'completed',
-          details: JSON.stringify(credential)
-        }
-      );
+  // Record in Firestore orders
+  if (db && userId) {
+    try {
+      const ordersCol = collection(db, FIREBASE_COLLECTIONS.orders);
+      await addDoc(ordersCol, {
+        user_id: userId,
+        user_email: userEmail || '',
+        product_type: 'account_log',
+        item_name: `${credential.subTypeTitle || credential.platform} (@${credential.username})`,
+        reference: credential.username,
+        price: Number(requiredPrice),
+        status: 'completed',
+        details: JSON.stringify(credential),
+        created_at: serverTimestamp()
+      });
+      await firebaseUpdateUserBalance(userId, newBalance);
+    } catch (ordErr) {
+      console.warn('Notice saving seed order in Firebase:', ordErr.message);
     }
-  } catch (ordErr) {
-    console.warn('Notice saving seed order in Appwrite:', ordErr.message);
   }
 
   try {
@@ -658,17 +553,18 @@ export async function dispenseSpecificAccountLog({
     }
   } catch {}
 
+  try {
+    window.dispatchEvent(new CustomEvent('balance-updated', { detail: { balance: newBalance } }));
+  } catch {}
+
   return { success: true, credential, newBalance };
 }
 
 /**
- * Bulk Dispense Account Logs (Cart Checkout)
- * Deducts total cost atomically, marks all items as sold/claimed,
- * logs each credential to purchase history with 30-day expiry timestamps,
- * and updates user profile balance.
+ * Bulk Dispense Account Logs (Cart Checkout) via Google Firebase
  */
 export async function bulkDispenseAccountLogs({
-  items, // array of { username, platformId, subTypeId, price, title, platform }
+  items,
   userId,
   userEmail,
   currentBalance
@@ -698,7 +594,6 @@ export async function bulkDispenseAccountLogs({
   const dispensedCredentials = [];
 
   for (const item of items) {
-    // Look up seed or generated credentials
     let seedCred = null;
     if (DEFAULT_SEED_INVENTORY[item.platformId]?.[item.subTypeId]) {
       seedCred = DEFAULT_SEED_INVENTORY[item.platformId][item.subTypeId].find(a => a.username === item.username);
@@ -755,51 +650,40 @@ export async function bulkDispenseAccountLogs({
     }
   } catch {}
 
-  // Update Appwrite user_profiles balance if available
+  // Update Firebase user_profiles balance
   try {
-    if (userId && APPWRITE_CONFIG.collections.user_profiles) {
-      const uDocs = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.user_profiles,
-        [Query.equal('user_id', userId), Query.limit(1)]
-      );
-      if (uDocs.documents.length > 0) {
-        await databases.updateDocument(
-          APPWRITE_CONFIG.databaseId,
-          APPWRITE_CONFIG.collections.user_profiles,
-          uDocs.documents[0].$id,
-          { balance: newBalance }
-        );
-      }
+    if (userId) {
+      await firebaseUpdateUserBalance(userId, newBalance);
     }
   } catch (err) {
     console.warn('Balance sync notice:', err.message);
   }
 
-  // Create audit order records in Appwrite orders collection for each bulk item
-  try {
-    if (userId && APPWRITE_CONFIG.collections.orders) {
+  // Create audit order records in Firebase orders collection
+  if (db && userId) {
+    try {
+      const ordersCol = collection(db, FIREBASE_COLLECTIONS.orders);
       for (const cred of dispensedCredentials) {
-        await databases.createDocument(
-          APPWRITE_CONFIG.databaseId,
-          APPWRITE_CONFIG.collections.orders,
-          ID.unique(),
-          {
-            user_id: userId,
-            user_email: userEmail || '',
-            product_type: 'account_log',
-            item_name: `${cred.subTypeTitle || cred.platform} (@${cred.username})`,
-            reference: cred.username,
-            price: Number(cred.price || 0),
-            status: 'completed',
-            details: JSON.stringify(cred)
-          }
-        );
+        await addDoc(ordersCol, {
+          user_id: userId,
+          user_email: userEmail || '',
+          product_type: 'account_log',
+          item_name: `${cred.subTypeTitle || cred.platform} (@${cred.username})`,
+          reference: cred.username,
+          price: Number(cred.price || 0),
+          status: 'completed',
+          details: JSON.stringify(cred),
+          created_at: serverTimestamp()
+        });
       }
+    } catch (bulkOrdErr) {
+      console.warn('Notice creating bulk orders in Firebase:', bulkOrdErr.message);
     }
-  } catch (bulkOrdErr) {
-    console.warn('Notice creating bulk orders in Appwrite:', bulkOrdErr.message);
   }
+
+  try {
+    window.dispatchEvent(new CustomEvent('balance-updated', { detail: { balance: newBalance } }));
+  } catch {}
 
   return {
     success: true,
@@ -810,7 +694,7 @@ export async function bulkDispenseAccountLogs({
 }
 
 /**
- * Admin Bulk Importer function for Appwrite
+ * Admin Bulk Importer function for Google Firebase Firestore
  */
 export async function adminBulkImportLogs({
   platformId,
@@ -820,105 +704,62 @@ export async function adminBulkImportLogs({
   records,
   onProgress
 }) {
-  let colId = APPWRITE_CONFIG.collections[platformId];
-  if (!colId) {
-    try {
-      const allPlatforms = await fetchDynamicPlatforms();
-      const p = allPlatforms.find(x => x.id === platformId);
-      if (p) colId = p.collectionId;
-    } catch {}
+  if (!db) {
+    throw new Error('Firestore is not initialized.');
   }
 
   if (!Array.isArray(records) || records.length === 0) {
     throw new Error('No records to import.');
   }
 
-  // 1. Try batch import via the Appwrite Serverless Function
-  try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'admin_bulk_import',
-        platformId,
-        subTypeId,
-        subTypeTitle,
-        price,
-        records
-      }),
-      false
-    );
-
-    if (execution && execution.responseBody) {
-      const parsed = JSON.parse(execution.responseBody);
-      if (parsed.success) {
-        if (onProgress) {
-          onProgress({
-            current: records.length,
-            total: records.length,
-            percentage: 100,
-            successCount: parsed.importedCount || records.length,
-            failedCount: 0
-          });
-        }
-        return {
-          success: true,
-          total: records.length,
-          successCount: parsed.importedCount || records.length,
-          failedCount: 0,
-          errors: []
-        };
-      } else if (parsed.error) {
-        throw new Error(parsed.error);
-      }
-    }
-  } catch (fnErr) {
-    console.warn('Serverless bulk import failed, attempting direct database fallback:', fnErr.message);
-  }
-
-  // 2. Direct fallback
+  const colName = platformId;
   let successCount = 0;
   let failedCount = 0;
   const errors = [];
 
-  for (let i = 0; i < records.length; i++) {
-    const rec = records[i];
+  // Write in batches of up to 500 documents (Firestore batch limit)
+  const batchSize = 100;
+  for (let i = 0; i < records.length; i += batchSize) {
+    const chunk = records.slice(i, i + batchSize);
+    const batch = writeBatch(db);
+
+    chunk.forEach(rec => {
+      const docRef = doc(collection(db, colName));
+      batch.set(docRef, {
+        username: rec.username,
+        password: rec.password,
+        two_factor_key: rec.twoFactorKey || rec.two_factor_key || '',
+        mail: rec.mail || '',
+        mail_password: rec.mailPassword || rec.mail_password || '',
+        sub_type_id: subTypeId,
+        sub_type_title: subTypeTitle || '',
+        price: Number(price || 1500),
+        status: 'available',
+        raw_record: rec.rawRecord || rec.raw_record || rec.raw || '',
+        custom_data: typeof rec.custom_data === 'string' ? rec.custom_data : JSON.stringify(rec.extraData || rec.customData || {}),
+        rules_notes: rec.rulesNotes || rec.rules_notes || '',
+        created_at: serverTimestamp()
+      });
+    });
+
     try {
-      await databases.createDocument(
-        APPWRITE_CONFIG.databaseId,
-        colId,
-        ID.unique(),
-        {
-          username: rec.username,
-          password: rec.password,
-          two_factor_key: rec.twoFactorKey || rec.two_factor_key || '',
-          mail: rec.mail || '',
-          mail_password: rec.mailPassword || rec.mail_password || '',
-          sub_type_id: subTypeId,
-          sub_type_title: subTypeTitle || '',
-          price: Number(price || 1500),
-          status: 'available',
-          raw_record: rec.rawRecord || rec.raw_record || rec.raw || '',
-          custom_data: typeof rec.custom_data === 'string' ? rec.custom_data : JSON.stringify(rec.extraData || rec.customData || {}),
-          rules_notes: rec.rulesNotes || rec.rules_notes || ''
-        }
-      );
-      successCount++;
-    } catch (err) {
-      failedCount++;
-      errors.push({ username: rec.username, error: err.message });
+      await batch.commit();
+      successCount += chunk.length;
+    } catch (batchErr) {
+      failedCount += chunk.length;
+      errors.push({ batchIndex: i, error: batchErr.message });
     }
 
     if (onProgress) {
+      const current = Math.min(i + batchSize, records.length);
       onProgress({
-        current: i + 1,
+        current,
         total: records.length,
-        percentage: Math.round(((i + 1) / records.length) * 100),
+        percentage: Math.round((current / records.length) * 100),
         successCount,
         failedCount
       });
     }
-
-    await new Promise(r => setTimeout(r, 100));
   }
 
   return {

@@ -47,6 +47,7 @@ export const FIREBASE_COLLECTIONS = {
   products_pricing: 'products_pricing',
   user_profiles: 'user_profiles',
   orders: 'orders',
+  platforms_catalog: 'platforms_catalog',
   facebook: 'facebook',
   tiktok: 'tiktok',
   instagram: 'instagram',

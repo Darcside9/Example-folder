@@ -190,7 +190,7 @@ export const PLATFORM_CATEGORIES = [
 
 /**
  * DEFAULT SEED INVENTORY:
- * Realistic verified account logs providing stock counts when Appwrite live records are queried.
+ * Realistic verified account logs providing stock counts when Google Firebase live records are queried.
  * Exactly implements the user's specification:
  * - USA Facebook:
  *   Type 1: 2 accounts

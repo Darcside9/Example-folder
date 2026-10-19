@@ -1,77 +1,96 @@
 // ==========================================================================
 // CHRIS SHOPPER — DYNAMIC PLATFORMS & CATEGORIES SERVICE
-// Manages real-time platform catalog retrieval from Appwrite Cloud DB,
+// Manages real-time platform catalog retrieval from Google Firebase Firestore,
 // dynamic creation, editing & deletion of platforms & packages.
 // ==========================================================================
 
-import { APPWRITE_CONFIG, functions, databases, Query } from './appwrite';
+import { 
+  db, 
+  FIREBASE_COLLECTIONS,
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  deleteDoc, 
+  query, 
+  where, 
+  serverTimestamp 
+} from './firebase';
 import { PLATFORM_CATEGORIES } from '../data/sampleLogsData';
 
 const CACHE_KEY = 'cs_platforms_catalog_cache';
 let memoryCache = null;
 
 /**
- * Fetch all active platforms and product packages.
- * Dynamically queries Appwrite Cloud DB (platforms_catalog),
- * falling back gracefully to local storage and static defaults.
+ * Fetch all active platforms and product packages from Google Firebase Firestore.
  */
 export async function fetchDynamicPlatforms(forceRefresh = false) {
   if (!forceRefresh && memoryCache && memoryCache.length > 0) {
     return memoryCache;
   }
 
-  try {
-    const response = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      'platforms_catalog',
-      [Query.equal('is_active', true), Query.limit(100)]
-    );
+  if (db) {
+    try {
+      const colRef = collection(db, FIREBASE_COLLECTIONS.platforms_catalog);
+      const snap = await getDocs(colRef);
 
-    if (response && response.documents && response.documents.length > 0) {
-      const platforms = response.documents.map(doc => {
-        let items = [];
-        try {
-          items = JSON.parse(doc.packages_json || '[]');
-        } catch {
-          items = [];
-        }
+      if (!snap.empty) {
+        const platforms = snap.docs
+          .map(d => {
+            const data = d.data();
+            let items = [];
+            try {
+              items = typeof data.packages_json === 'string' 
+                ? JSON.parse(data.packages_json || '[]') 
+                : (data.packages_json || []);
+            } catch {
+              items = [];
+            }
 
-        let delimiterConfig = null;
-        if (doc.delimiter_config) {
+            let delimiterConfig = null;
+            if (data.delimiter_config) {
+              try {
+                delimiterConfig = typeof data.delimiter_config === 'string' 
+                  ? JSON.parse(data.delimiter_config) 
+                  : data.delimiter_config;
+              } catch {}
+            }
+
+            return {
+              id: data.platform_id || d.id,
+              name: data.name || d.id,
+              subtitle: data.subtitle || '',
+              tag: data.tag || data.name,
+              icon: data.icon || 'facebook',
+              color: data.color || '#38bdf8',
+              collectionId: data.collection_id || data.platform_id || d.id,
+              demoPrice: Number(data.demo_price || 1500),
+              delimiterConfig,
+              delimiter_config: data.delimiter_config,
+              has2fa: Boolean(data.has_2fa),
+              isActive: data.is_active !== false,
+              items: items.map(item => ({
+                ...item,
+                platform: item.platform || data.name,
+                has2fa: item.has2fa !== undefined ? Boolean(item.has2fa) : (item.has_2fa !== undefined ? Boolean(item.has_2fa) : false),
+                price: Number(item.price !== undefined ? item.price : (data.demo_price || 1500))
+              }))
+            };
+          })
+          .filter(p => p.isActive);
+
+        if (platforms.length > 0) {
+          memoryCache = platforms;
           try {
-            delimiterConfig = typeof doc.delimiter_config === 'string' ? JSON.parse(doc.delimiter_config) : doc.delimiter_config;
+            localStorage.setItem(CACHE_KEY, JSON.stringify(platforms));
           } catch {}
+          return platforms;
         }
-
-        return {
-          id: doc.platform_id,
-          name: doc.name,
-          subtitle: doc.subtitle || '',
-          tag: doc.tag || doc.name,
-          icon: doc.icon || 'facebook',
-          color: doc.color || '#38bdf8',
-          collectionId: doc.collection_id,
-          demoPrice: Number(doc.demo_price || 1500),
-          delimiterConfig,
-          delimiter_config: doc.delimiter_config,
-          has2fa: Boolean(doc.has_2fa),
-          items: items.map(item => ({
-            ...item,
-            platform: item.platform || doc.name,
-            has2fa: item.has2fa !== undefined ? Boolean(item.has2fa) : (item.has_2fa !== undefined ? Boolean(item.has_2fa) : false),
-            price: Number(item.price !== undefined ? item.price : (doc.demo_price || 1500))
-          }))
-        };
-      });
-
-      memoryCache = platforms;
-      try {
-        localStorage.setItem(CACHE_KEY, JSON.stringify(platforms));
-      } catch {}
-      return platforms;
+      }
+    } catch (err) {
+      console.warn('Error fetching dynamic platforms from Firebase Firestore, checking local cache:', err.message);
     }
-  } catch (err) {
-    console.warn('Error fetching dynamic platforms from Appwrite DB, checking local cache:', err.message);
   }
 
   // Attempt local cache fallback
@@ -99,11 +118,13 @@ function invalidateCache(platformId = '') {
   try {
     localStorage.removeItem(CACHE_KEY);
   } catch {}
-  window.dispatchEvent(new CustomEvent('platforms-updated', { detail: { platformId } }));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('platforms-updated', { detail: { platformId } }));
+  }
 }
 
 /**
- * Create a new platform category in Appwrite.
+ * Create a new platform category in Google Firebase Firestore.
  */
 export async function createPlatform({
   id,
@@ -122,36 +143,32 @@ export async function createPlatform({
 
   const cleanId = id.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
 
+  if (!db) {
+    throw new Error('Firestore is not initialized.');
+  }
+
   try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'create_platform',
-        platformId: cleanId,
-        name: name.trim(),
-        subtitle: subtitle || '',
-        tag: tag || name.trim(),
-        icon: icon || 'generic_globe',
-        color: color || '#38bdf8',
-        demoPrice: Number(demoPrice || 1500),
-        packages: packages || [],
-        has2fa: Boolean(has2fa)
-      })
-    );
+    const docRef = doc(db, FIREBASE_COLLECTIONS.platforms_catalog, cleanId);
+    const payload = {
+      platform_id: cleanId,
+      name: name.trim(),
+      subtitle: subtitle || '',
+      tag: tag || name.trim(),
+      icon: icon || 'generic_globe',
+      color: color || '#38bdf8',
+      collection_id: cleanId,
+      demo_price: Number(demoPrice || 1500),
+      packages_json: JSON.stringify(packages || []),
+      has_2fa: Boolean(has2fa),
+      is_active: true,
+      created_at: serverTimestamp()
+    };
 
-    if (execution && execution.responseBody) {
-      const result = JSON.parse(execution.responseBody);
-      if (result.success) {
-        invalidateCache(cleanId);
-        return result;
-      } else if (result.error) {
-        throw new Error(result.error);
-      }
-    }
-
-    throw new Error('Empty or invalid response from serverless platform provisioner.');
+    await setDoc(docRef, payload, { merge: true });
+    invalidateCache(cleanId);
+    return { success: true, platformId: cleanId, ...payload };
   } catch (err) {
-    console.error('Failed to create platform:', err);
+    console.error('Failed to create platform in Firebase:', err);
     throw err;
   }
 }
@@ -161,68 +178,42 @@ export async function createPlatform({
  */
 export async function updatePlatform(platformId, updates = {}) {
   if (!platformId) throw new Error('Platform ID is required.');
+  if (!db) throw new Error('Firestore is not initialized.');
 
-  // 1. Try serverless function
   try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'update_platform',
-        platformId,
-        updates,
-        ...updates
-      })
-    );
+    const docRef = doc(db, FIREBASE_COLLECTIONS.platforms_catalog, platformId);
+    const payload = {
+      updated_at: serverTimestamp()
+    };
 
-    if (execution && execution.responseBody) {
-      const result = JSON.parse(execution.responseBody);
-      if (result.success) {
-        invalidateCache(platformId);
-        return result;
-      }
+    if (updates.name !== undefined) payload.name = updates.name.trim();
+    if (updates.subtitle !== undefined) payload.subtitle = updates.subtitle.trim();
+    if (updates.tag !== undefined) payload.tag = updates.tag.trim();
+    if (updates.icon !== undefined) payload.icon = updates.icon;
+    if (updates.color !== undefined) payload.color = updates.color;
+    if (updates.demoPrice !== undefined) payload.demo_price = Number(updates.demoPrice);
+    if (updates.is_active !== undefined) payload.is_active = Boolean(updates.is_active);
+    if (updates.has2fa !== undefined || updates.has_2fa !== undefined) {
+      payload.has_2fa = Boolean(updates.has2fa ?? updates.has_2fa);
     }
-  } catch (fnErr) {
-    console.warn('Serverless update_platform notice:', fnErr.message);
-  }
+    if (updates.delimiter_config !== undefined) {
+      payload.delimiter_config = typeof updates.delimiter_config === 'string' 
+        ? updates.delimiter_config 
+        : JSON.stringify(updates.delimiter_config);
+    }
+    if (updates.packages_json !== undefined) {
+      payload.packages_json = typeof updates.packages_json === 'string'
+        ? updates.packages_json
+        : JSON.stringify(updates.packages_json);
+    }
 
-  // 2. Direct database fallback
-  try {
-    const list = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      'platforms_catalog',
-      [Query.equal('platform_id', platformId), Query.limit(1)]
-    );
-    if (list.documents.length > 0) {
-      const doc = list.documents[0];
-      const payload = {};
-      if (updates.name !== undefined) payload.name = updates.name.trim();
-      if (updates.subtitle !== undefined) payload.subtitle = updates.subtitle.trim();
-      if (updates.tag !== undefined) payload.tag = updates.tag.trim();
-      if (updates.icon !== undefined) payload.icon = updates.icon;
-      if (updates.color !== undefined) payload.color = updates.color;
-      if (updates.demoPrice !== undefined) payload.demo_price = Number(updates.demoPrice);
-      if (updates.is_active !== undefined) payload.is_active = Boolean(updates.is_active);
-      if (updates.has2fa !== undefined || updates.has_2fa !== undefined) {
-        payload.has_2fa = Boolean(updates.has2fa ?? updates.has_2fa);
-      }
-      if (updates.delimiter_config !== undefined) {
-        payload.delimiter_config = typeof updates.delimiter_config === 'string' ? updates.delimiter_config : JSON.stringify(updates.delimiter_config);
-      }
-      await databases.updateDocument(
-        APPWRITE_CONFIG.databaseId,
-        'platforms_catalog',
-        doc.$id,
-        payload
-      );
-      invalidateCache(platformId);
-      return { success: true, platformId, updated: payload };
-    }
+    await setDoc(docRef, payload, { merge: true });
+    invalidateCache(platformId);
+    return { success: true, platformId, updated: payload };
   } catch (dbErr) {
-    console.error('Direct DB update_platform failed:', dbErr);
+    console.error('Firebase update_platform failed:', dbErr);
     throw dbErr;
   }
-
-  throw new Error('Failed to update platform.');
 }
 
 /**
@@ -230,29 +221,16 @@ export async function updatePlatform(platformId, updates = {}) {
  */
 export async function deletePlatform(platformId) {
   if (!platformId) throw new Error('Platform ID is required.');
+  if (!db) throw new Error('Firestore is not initialized.');
 
   try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'delete_platform',
-        platformId
-      })
-    );
-
-    if (execution && execution.responseBody) {
-      const result = JSON.parse(execution.responseBody);
-      if (result.success) {
-        invalidateCache(platformId);
-        return result;
-      } else if (result.error) {
-        throw new Error(result.error);
-      }
-    }
-
-    throw new Error('Failed to delete platform.');
+    const docRef = doc(db, FIREBASE_COLLECTIONS.platforms_catalog, platformId);
+    // Mark as inactive in Firestore
+    await setDoc(docRef, { is_active: false, updated_at: serverTimestamp() }, { merge: true });
+    invalidateCache(platformId);
+    return { success: true, platformId };
   } catch (err) {
-    console.error('Delete platform error:', err);
+    console.error('Delete platform error in Firebase:', err);
     throw err;
   }
 }
@@ -264,70 +242,52 @@ export async function addProductPackage(platformId, packageData) {
   if (!platformId || !packageData || !packageData.title) {
     throw new Error('Platform ID and Package Title are required.');
   }
+  if (!db) throw new Error('Firestore is not initialized.');
 
-  // 1. Try serverless function
   try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'add_platform_package',
-        platformId,
-        packageData
-      })
-    );
+    const docRef = doc(db, FIREBASE_COLLECTIONS.platforms_catalog, platformId);
+    const snap = await getDoc(docRef);
 
-    if (execution && execution.responseBody) {
-      const result = JSON.parse(execution.responseBody);
-      if (result.success) {
-        invalidateCache(platformId);
-        return result;
+    let currentPackages = [];
+    let platformName = platformId;
+    let demoPrice = 1500;
+
+    if (snap.exists()) {
+      const data = snap.data();
+      platformName = data.name || platformId;
+      demoPrice = data.demo_price || 1500;
+      try {
+        currentPackages = typeof data.packages_json === 'string'
+          ? JSON.parse(data.packages_json || '[]')
+          : (data.packages_json || []);
+      } catch {
+        currentPackages = [];
       }
     }
-  } catch (fnErr) {
-    console.warn('Serverless add_platform_package notice:', fnErr.message);
+
+    const pkgId = packageData.id || `${platformId}-type-${Date.now()}`;
+    const newPkg = {
+      id: pkgId,
+      title: packageData.title.trim(),
+      platform: packageData.platform || platformName,
+      price: Number(packageData.price !== undefined ? packageData.price : demoPrice),
+      description: packageData.description ? packageData.description.trim() : '',
+      has2fa: Boolean(packageData.has2fa ?? packageData.has_2fa ?? false)
+    };
+
+    currentPackages.push(newPkg);
+
+    await setDoc(docRef, {
+      packages_json: JSON.stringify(currentPackages),
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    invalidateCache(platformId);
+    return { success: true, platformId, package: newPkg, packages: currentPackages };
+  } catch (err) {
+    console.error('Firebase add_platform_package failed:', err);
+    throw err;
   }
-
-  // 2. Direct database fallback
-  try {
-    const list = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      'platforms_catalog',
-      [Query.equal('platform_id', platformId), Query.limit(1)]
-    );
-    if (list.documents.length > 0) {
-      const doc = list.documents[0];
-      let currentPackages = [];
-      try {
-        currentPackages = JSON.parse(doc.packages_json || '[]');
-      } catch {}
-
-      const pkgId = packageData.id || `${platformId}-type-${Date.now()}`;
-      const newPkg = {
-        id: pkgId,
-        title: packageData.title.trim(),
-        platform: packageData.platform || doc.name,
-        price: Number(packageData.price !== undefined ? packageData.price : doc.demo_price || 1500),
-        description: packageData.description ? packageData.description.trim() : '',
-        has2fa: Boolean(packageData.has2fa ?? packageData.has_2fa ?? false)
-      };
-
-      currentPackages.push(newPkg);
-
-      await databases.updateDocument(
-        APPWRITE_CONFIG.databaseId,
-        'platforms_catalog',
-        doc.$id,
-        { packages_json: JSON.stringify(currentPackages) }
-      );
-      invalidateCache(platformId);
-      return { success: true, platformId, package: newPkg, packages: currentPackages };
-    }
-  } catch (dbErr) {
-    console.error('Direct DB add_platform_package failed:', dbErr);
-    throw dbErr;
-  }
-
-  throw new Error('Failed to add product package to platform.');
 }
 
 /**
@@ -337,71 +297,50 @@ export async function updateProductPackage(platformId, packageId, updates) {
   if (!platformId || !packageId) {
     throw new Error('Platform ID and Package ID are required.');
   }
+  if (!db) throw new Error('Firestore is not initialized.');
 
-  // 1. Try serverless function
   try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'update_platform_package',
-        platformId,
-        packageId,
-        packageData: updates,
-        updates
-      })
-    );
+    const docRef = doc(db, FIREBASE_COLLECTIONS.platforms_catalog, platformId);
+    const snap = await getDoc(docRef);
 
-    if (execution && execution.responseBody) {
-      const result = JSON.parse(execution.responseBody);
-      if (result.success) {
-        invalidateCache(platformId);
-        return result;
-      }
+    if (!snap.exists()) {
+      throw new Error(`Platform ${platformId} not found.`);
     }
-  } catch (fnErr) {
-    console.warn('Serverless update_platform_package notice:', fnErr.message);
-  }
 
-  // 2. Direct database fallback
-  try {
-    const list = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      'platforms_catalog',
-      [Query.equal('platform_id', platformId), Query.limit(1)]
-    );
-    if (list.documents.length > 0) {
-      const doc = list.documents[0];
-      let currentPackages = [];
-      try {
-        currentPackages = JSON.parse(doc.packages_json || '[]');
-      } catch {}
-
-      const pkgIndex = currentPackages.findIndex(p => p.id === packageId);
-      if (pkgIndex >= 0) {
-        currentPackages[pkgIndex] = {
-          ...currentPackages[pkgIndex],
-          title: updates.title !== undefined ? updates.title.trim() : currentPackages[pkgIndex].title,
-          price: updates.price !== undefined ? Number(updates.price) : currentPackages[pkgIndex].price,
-          description: updates.description !== undefined ? updates.description.trim() : (currentPackages[pkgIndex].description || ''),
-          has2fa: updates.has2fa !== undefined ? Boolean(updates.has2fa) : (updates.has_2fa !== undefined ? Boolean(updates.has_2fa) : Boolean(currentPackages[pkgIndex].has2fa ?? currentPackages[pkgIndex].has_2fa ?? false))
-        };
-
-        await databases.updateDocument(
-          APPWRITE_CONFIG.databaseId,
-          'platforms_catalog',
-          doc.$id,
-          { packages_json: JSON.stringify(currentPackages) }
-        );
-        invalidateCache(platformId);
-        return { success: true, platformId, packageId, package: currentPackages[pkgIndex] };
-      }
+    const data = snap.data();
+    let currentPackages = [];
+    try {
+      currentPackages = typeof data.packages_json === 'string'
+        ? JSON.parse(data.packages_json || '[]')
+        : (data.packages_json || []);
+    } catch {
+      currentPackages = [];
     }
-  } catch (dbErr) {
-    console.error('Direct DB update_platform_package failed:', dbErr);
-    throw dbErr;
-  }
 
-  throw new Error('Failed to update product package.');
+    const pkgIndex = currentPackages.findIndex(p => p.id === packageId);
+    if (pkgIndex < 0) {
+      throw new Error(`Package ${packageId} not found on platform.`);
+    }
+
+    currentPackages[pkgIndex] = {
+      ...currentPackages[pkgIndex],
+      title: updates.title !== undefined ? updates.title.trim() : currentPackages[pkgIndex].title,
+      price: updates.price !== undefined ? Number(updates.price) : currentPackages[pkgIndex].price,
+      description: updates.description !== undefined ? updates.description.trim() : (currentPackages[pkgIndex].description || ''),
+      has2fa: updates.has2fa !== undefined ? Boolean(updates.has2fa) : (updates.has_2fa !== undefined ? Boolean(updates.has_2fa) : Boolean(currentPackages[pkgIndex].has2fa ?? currentPackages[pkgIndex].has_2fa ?? false))
+    };
+
+    await setDoc(docRef, {
+      packages_json: JSON.stringify(currentPackages),
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    invalidateCache(platformId);
+    return { success: true, platformId, packageId, package: currentPackages[pkgIndex] };
+  } catch (err) {
+    console.error('Firebase update_platform_package failed:', err);
+    throw err;
+  }
 }
 
 /**
@@ -411,30 +350,37 @@ export async function deleteProductPackage(platformId, packageId) {
   if (!platformId || !packageId) {
     throw new Error('Platform ID and Package ID are required.');
   }
+  if (!db) throw new Error('Firestore is not initialized.');
 
   try {
-    const execution = await functions.createExecution(
-      APPWRITE_CONFIG.functionId,
-      JSON.stringify({
-        action: 'delete_platform_package',
-        platformId,
-        packageId
-      })
-    );
+    const docRef = doc(db, FIREBASE_COLLECTIONS.platforms_catalog, platformId);
+    const snap = await getDoc(docRef);
 
-    if (execution && execution.responseBody) {
-      const result = JSON.parse(execution.responseBody);
-      if (result.success) {
-        invalidateCache(platformId);
-        return result;
-      } else if (result.error) {
-        throw new Error(result.error);
-      }
+    if (!snap.exists()) {
+      throw new Error(`Platform ${platformId} not found.`);
     }
 
-    throw new Error('Failed to delete product package.');
+    const data = snap.data();
+    let currentPackages = [];
+    try {
+      currentPackages = typeof data.packages_json === 'string'
+        ? JSON.parse(data.packages_json || '[]')
+        : (data.packages_json || []);
+    } catch {
+      currentPackages = [];
+    }
+
+    currentPackages = currentPackages.filter(p => p.id !== packageId);
+
+    await setDoc(docRef, {
+      packages_json: JSON.stringify(currentPackages),
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    invalidateCache(platformId);
+    return { success: true, platformId, packageId };
   } catch (err) {
-    console.error('Delete package error:', err);
+    console.error('Firebase delete_platform_package failed:', err);
     throw err;
   }
 }

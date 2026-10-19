@@ -9,7 +9,7 @@ export default function ProtectedRoute({ children }) {
     return (
       <LoadingScreen 
         message="Synchronizing user session..." 
-        subtext="Fetching user wallet balance & account logs from Appwrite Cloud..." 
+        subtext="Fetching user wallet balance & account logs from Google Firebase Cloud..." 
       />
     );
   }

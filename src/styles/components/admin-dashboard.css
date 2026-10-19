@@ -1737,7 +1737,7 @@ tr.row-invalid td {
 }
 
 /* ==========================================================================
-   APPWRITE CLOUD DATABASE KEEP-ALIVE & ANTI-PAUSE GUARDIAN BANNER
+   GOOGLE FIREBASE CLOUD DATABASE ALWAYS-ON STATUS BANNER
    ========================================================================== */
 .db-keepalive-banner {
   background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%);

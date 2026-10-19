@@ -136,7 +136,7 @@ export default function UserDashboard({ user, onSignOut }) {
         const pending = userOrders.filter(o => o.status === 'pending' || o.status === 'code_received');
         setActiveLines(pending);
 
-        // Load purchased account logs from Appwrite Cloud DB + local cache
+        // Load purchased account logs from Google Firebase Firestore + local cache
         setPurchasedLogsList(userLogs);
       } catch (err) {
         console.error('Error loading dashboard data:', err);
@@ -146,7 +146,7 @@ export default function UserDashboard({ user, onSignOut }) {
     }
     loadData();
 
-    // Subscribe to live pricing updates from Appwrite
+    // Subscribe to live pricing updates from Google Firebase Firestore
     const unsubscribePricing = subscribeToPricingUpdates(async (freshPricingList) => {
       try {
         if (Array.isArray(freshPricingList)) {
@@ -943,7 +943,7 @@ export default function UserDashboard({ user, onSignOut }) {
           <div className="dash-sub-view">
             <div className="sub-view-header">
               <h2>🔑 Social & Platform Account Logs</h2>
-              <p>Browse aged accounts with 2FA, Outlook email access, and instant delivery from Appwrite Cloud.</p>
+              <p>Browse aged accounts with 2FA, Outlook email access, and instant delivery from Google Firebase Cloud.</p>
             </div>
 
             <LogsMarketplace 

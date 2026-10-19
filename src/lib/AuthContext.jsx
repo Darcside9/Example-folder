@@ -1,10 +1,10 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { 
-  appwriteGetSession, 
-  appwriteSignOut, 
-  appwriteGetUserProfile,
+  firebaseGetSession, 
+  firebaseSignOut, 
+  firebaseGetUserProfile,
   getSavedSession 
-} from './appwriteAuth';
+} from './firebaseAuth';
 import { ADMIN_CONTACT } from '../data/siteConfig';
 
 const AuthContext = createContext();
@@ -16,12 +16,12 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     async function initSession() {
       try {
-        // 1. Check active Appwrite session
-        const sessionUser = await appwriteGetSession();
+        // 1. Check active Firebase session
+        const sessionUser = await firebaseGetSession();
         if (sessionUser) {
           setCurrentUser(sessionUser);
-          // 2. Fetch fresh profile from Appwrite user_profiles collection
-          const freshProfile = await appwriteGetUserProfile(sessionUser.id);
+          // 2. Fetch fresh profile from Firestore user_profiles collection
+          const freshProfile = await firebaseGetUserProfile(sessionUser.id);
           if (freshProfile) {
             setCurrentUser((prev) => ({ 
               ...prev, 
@@ -40,7 +40,7 @@ export function AuthProvider({ children }) {
           }
         }
       } catch (err) {
-        console.warn("Appwrite session initialization notice:", err.message);
+        console.warn("Firebase session initialization notice:", err.message);
         const saved = getSavedSession();
         if (saved) setCurrentUser(saved);
       } finally {
@@ -55,14 +55,14 @@ export function AuthProvider({ children }) {
   };
 
   const logout = async () => {
-    await appwriteSignOut();
+    await firebaseSignOut();
     setCurrentUser(null);
   };
 
   const refreshUser = async () => {
     if (currentUser?.id) {
       try {
-        const fresh = await appwriteGetUserProfile(currentUser.id);
+        const fresh = await firebaseGetUserProfile(currentUser.id);
         if (fresh) {
           const updated = {
             ...currentUser,

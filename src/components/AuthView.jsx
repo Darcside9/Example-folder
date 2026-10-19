@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { appwriteSignIn, appwriteSignUp } from '../lib/appwriteAuth';
+import { firebaseSignIn, firebaseSignUp } from '../lib/firebaseAuth';
 import { siteConfig } from '../data/siteConfig';
 import { useAuth } from '../lib/AuthContext';
 
@@ -67,7 +67,7 @@ export default function AuthView() {
     setIsLoading(true);
     try {
       if (mode === 'login') {
-        const { user } = await appwriteSignIn(email, password);
+        const { user } = await firebaseSignIn(email, password);
         login(user);
         if (user.is_admin) {
           navigate('/admin');
@@ -75,7 +75,7 @@ export default function AuthView() {
           navigate('/dashboard');
         }
       } else {
-        const { user } = await appwriteSignUp(email, password, contact);
+        const { user } = await firebaseSignUp(email, password, contact);
         login(user);
         if (user.is_admin) {
           navigate('/admin');

@@ -36,7 +36,7 @@ export default function Hero({ onOpenOrderModal }) {
 
     const defaultMin = catalogPrices.length > 0 ? Math.min(...catalogPrices) : 500;
 
-    // 2. Check live overrides from Appwrite
+    // 2. Check live overrides from Google Firebase
     const liveSmsPrices = (livePricingDocs || [])
       .filter(d => d.product_type === 'sms_service' && d.is_active !== false && typeof d.price_usd === 'number' && d.price_usd > 0)
       .map(d => d.price_usd);

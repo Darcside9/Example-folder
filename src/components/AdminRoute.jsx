@@ -9,7 +9,7 @@ export default function AdminRoute({ children }) {
     return (
       <LoadingScreen 
         message="Verifying admin credentials..." 
-        subtext="Connecting to Appwrite Cloud Zero-Trust Admin Controller..." 
+        subtext="Connecting to Google Firebase Zero-Trust Admin Controller..." 
       />
     );
   }

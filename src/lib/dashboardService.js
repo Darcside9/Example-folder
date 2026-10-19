@@ -1,18 +1,32 @@
 // ==========================================================================
-// CHRIS SHOPPER — BACKEND DASHBOARD & APPWRITE DATA SERVICE
-// Fully integrated with Appwrite Cloud (EU Frankfurt)
+// CHRIS SHOPPER — BACKEND DASHBOARD & GOOGLE FIREBASE DATA SERVICE
+// Fully integrated with Google Firebase Cloud (Always-On Firestore & Auth)
 // ==========================================================================
 
-import { databases, APPWRITE_CONFIG, Query, ID } from './appwrite';
+import { 
+  db, 
+  FIREBASE_COLLECTIONS,
+  collection, 
+  doc, 
+  getDoc, 
+  getDocs, 
+  setDoc, 
+  addDoc, 
+  updateDoc, 
+  query, 
+  where, 
+  orderBy, 
+  limit, 
+  serverTimestamp 
+} from './firebase';
 import { siteConfig } from '../data/siteConfig';
 import { 
-  appwriteGetUserProfile, 
-  appwriteGetAllUsers, 
-  appwriteUpdateUserBalance,
-  appwriteUpdateProfile,
-  appwriteUpdatePassword
-} from './appwriteAuth';
-import { firebaseSaveOrder, firebaseUpdateUserBalance } from './firebaseDb';
+  firebaseGetUserProfile, 
+  firebaseGetAllUsers, 
+  firebaseUpdateUserBalance,
+  firebaseUpdateProfile,
+  firebaseUpdatePassword
+} from './firebaseAuth';
 import { 
   orderTigerSmsNumber, 
   checkTigerSmsStatus, 
@@ -51,27 +65,31 @@ export const DEFAULT_SERVICES = [
 ];
 
 /**
- * Fetch all available services from Appwrite products_pricing
+ * Fetch all available services from Firebase Firestore products_pricing
  */
 export async function getServices() {
-  try {
-    const res = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.products_pricing,
-      [Query.equal('product_type', 'sms_service'), Query.limit(50)]
-    );
+  if (!db) return DEFAULT_SERVICES;
 
-    if (res.documents.length === 0) {
+  try {
+    const colRef = collection(db, FIREBASE_COLLECTIONS.products_pricing);
+    const snap = await getDocs(colRef);
+
+    if (snap.empty) {
       return DEFAULT_SERVICES;
     }
 
+    const docs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
     return DEFAULT_SERVICES.map(srv => {
-      const dbMatch = res.documents.find(d => d.product_id === srv.id || d.name.toLowerCase() === srv.name.toLowerCase());
+      const dbMatch = docs.find(d => 
+        (d.product_id && d.product_id.toLowerCase() === srv.id.toLowerCase()) || 
+        (d.name && d.name.toLowerCase() === srv.name.toLowerCase())
+      );
       if (dbMatch) {
         return {
           ...srv,
-          price: Number(dbMatch.price_usd),
-          is_active: dbMatch.is_active,
+          price: Number(dbMatch.price_usd || srv.price),
+          is_active: dbMatch.is_active !== false,
           carrier_speed: dbMatch.carrier_speed || srv.carrier_speed
         };
       }
@@ -84,154 +102,107 @@ export async function getServices() {
 }
 
 /**
- * Fetch user profile & live balance from Appwrite user_profiles
+ * Fetch user profile & live balance from Google Firebase user_profiles
  */
 export async function getUserProfile(userId) {
-  return await appwriteGetUserProfile(userId);
+  return await firebaseGetUserProfile(userId);
 }
 
 /**
- * Fetch user active & historical SMS number rental orders from Appwrite orders.
+ * Fetch user active & historical SMS number rental orders from Firestore orders.
  * Strictly filters by product_type === 'sms_service' so account logs never mix in.
  */
 export async function getUserOrders(userId) {
-  try {
-    const res = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.orders,
-      [
-        Query.equal('user_id', userId),
-        Query.equal('product_type', 'sms_service'),
-        Query.orderDesc('$createdAt'),
-        Query.limit(50)
-      ]
-    );
+  if (!db || !userId) return [];
 
-    return res.documents.map(d => ({
-      id: d.$id,
-      user_id: d.user_id,
-      service_name: d.item_name,
-      phone_number: d.reference,
-      cost: Number(d.price || 0),
-      status: d.status,
-      created_at: d.$createdAt,
-      details: d.details
-    }));
+  try {
+    const colRef = collection(db, FIREBASE_COLLECTIONS.orders);
+    const q = query(
+      colRef,
+      where('user_id', '==', userId),
+      where('product_type', '==', 'sms_service')
+    );
+    const snap = await getDocs(q);
+
+    const orders = snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id: d.id,
+        user_id: data.user_id,
+        service_name: data.item_name,
+        phone_number: data.reference,
+        cost: Number(data.price || 0),
+        status: data.status,
+        created_at: data.created_at?.toDate ? data.created_at.toDate().toISOString() : (data.created_at || new Date().toISOString()),
+        details: data.details
+      };
+    });
+
+    // Sort descending by created_at
+    orders.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return orders;
   } catch (err) {
-    // Fallback if compound index is pending: filter in memory
-    try {
-      const fallback = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.orders,
-        [Query.equal('user_id', userId), Query.orderDesc('$createdAt'), Query.limit(50)]
-      );
-      return fallback.documents
-        .filter(d => d.product_type === 'sms_service')
-        .map(d => ({
-          id: d.$id,
-          user_id: d.user_id,
-          service_name: d.item_name,
-          phone_number: d.reference,
-          cost: Number(d.price || 0),
-          status: d.status,
-          created_at: d.$createdAt,
-          details: d.details
-        }));
-    } catch (fallbackErr) {
-      console.warn('Error fetching orders from Appwrite:', err.message);
-      return [];
-    }
+    console.warn('Error fetching SMS orders from Firebase Firestore:', err.message);
+    return [];
   }
 }
 
 /**
- * Fetch user historical purchased account logs from Appwrite orders
+ * Fetch user historical purchased account logs from Firestore orders
  */
 export async function getUserLogOrders(userId) {
-  try {
-    const res = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.orders,
-      [
-        Query.equal('user_id', userId),
-        Query.equal('product_type', 'account_log'),
-        Query.orderDesc('$createdAt'),
-        Query.limit(100)
-      ]
-    );
+  if (!db || !userId) return [];
 
-    return res.documents.map(d => {
+  try {
+    const colRef = collection(db, FIREBASE_COLLECTIONS.orders);
+    const q = query(
+      colRef,
+      where('user_id', '==', userId),
+      where('product_type', '==', 'account_log')
+    );
+    const snap = await getDocs(q);
+
+    const logs = snap.docs.map(d => {
+      const data = d.data();
       let det = {};
       try {
-        if (d.details) det = typeof d.details === 'string' ? JSON.parse(d.details) : d.details;
+        if (data.details) det = typeof data.details === 'string' ? JSON.parse(data.details) : data.details;
       } catch {}
 
       const platformName = det.platform 
         ? det.platform.charAt(0).toUpperCase() + det.platform.slice(1)
-        : (d.item_name ? d.item_name.split(' ')[0] : 'Account');
+        : (data.item_name ? data.item_name.split(' ')[0] : 'Account');
+
+      const createdAtStr = data.created_at?.toDate ? data.created_at.toDate().toISOString() : (data.created_at || new Date().toISOString());
 
       return {
-        id: d.$id,
+        id: d.id,
         platform: platformName,
         platformId: det.platformId || det.platform || 'account',
         subTypeId: det.subTypeId || '',
-        subTypeTitle: det.subTypeTitle || d.item_name || '',
-        username: det.username || d.reference,
+        subTypeTitle: det.subTypeTitle || data.item_name || '',
+        username: det.username || data.reference,
         password: det.password || '',
         twoFactorKey: det.twoFactorKey || '',
         mail: det.mail || '',
         mailPassword: det.mailPassword || '',
-        comboString: det.comboString || `${det.username || d.reference}:${det.password || ''}`,
-        price: Number(d.price || 0),
-        purchasedAt: d.$createdAt,
-        userId: d.user_id
+        comboString: det.comboString || `${det.username || data.reference}:${det.password || ''}`,
+        price: Number(data.price || 0),
+        purchasedAt: createdAtStr,
+        userId: data.user_id
       };
     });
+
+    logs.sort((a, b) => new Date(b.purchasedAt) - new Date(a.purchasedAt));
+    return logs;
   } catch (err) {
-    try {
-      const fallback = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.orders,
-        [Query.equal('user_id', userId), Query.orderDesc('$createdAt'), Query.limit(100)]
-      );
-      return fallback.documents
-        .filter(d => d.product_type === 'account_log')
-        .map(d => {
-          let det = {};
-          try {
-            if (d.details) det = typeof d.details === 'string' ? JSON.parse(d.details) : d.details;
-          } catch {}
-
-          const platformName = det.platform 
-            ? det.platform.charAt(0).toUpperCase() + det.platform.slice(1)
-            : (d.item_name ? d.item_name.split(' ')[0] : 'Account');
-
-          return {
-            id: d.$id,
-            platform: platformName,
-            platformId: det.platformId || det.platform || 'account',
-            subTypeId: det.subTypeId || '',
-            subTypeTitle: det.subTypeTitle || d.item_name || '',
-            username: det.username || d.reference,
-            password: det.password || '',
-            twoFactorKey: det.twoFactorKey || '',
-            mail: det.mail || '',
-            mailPassword: det.mailPassword || '',
-            comboString: det.comboString || `${det.username || d.reference}:${det.password || ''}`,
-            price: Number(d.price || 0),
-            purchasedAt: d.$createdAt,
-            userId: d.user_id
-          };
-        });
-    } catch (fallbackErr) {
-      console.warn('Error fetching log orders from Appwrite:', err.message);
-      return [];
-    }
+    console.warn('Error fetching log orders from Firebase Firestore:', err.message);
+    return [];
   }
 }
 
 /**
- * Allocate a real virtual number line from Tiger SMS API Carrier Gateway and deduct balance
+ * Allocate a real virtual number line from Tiger SMS API Carrier Gateway and deduct balance in Firebase
  */
 export async function allocateNumberLine({ userId, service, country = 'us', currentBalance = 10 }) {
   if (currentBalance < service.price) {
@@ -271,14 +242,12 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
 
   const newBalance = Number((currentBalance - service.price).toFixed(2));
 
-  // Save order to Appwrite orders
+  // Save order directly into Google Firebase Firestore
   let orderId = 'ord-' + Date.now();
-  try {
-    const doc = await databases.createDocument(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.orders,
-      ID.unique(),
-      {
+  if (db) {
+    try {
+      const colRef = collection(db, FIREBASE_COLLECTIONS.orders);
+      const docRef = await addDoc(colRef, {
         user_id: userId,
         user_email: '',
         product_type: 'sms_service',
@@ -296,46 +265,20 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
           rawNumber,
           serviceCode,
           countryId
-        })
-      }
-    );
-    orderId = doc.$id;
-  } catch (err) {
-    console.warn('Appwrite order save note:', err.message);
+        }),
+        created_at: serverTimestamp()
+      });
+      orderId = docRef.id;
+    } catch (err) {
+      console.warn('Firebase order record notice:', err.message);
+    }
   }
 
-  // Deduct user balance in Appwrite user_profiles
+  // Deduct user balance in Firebase Firestore
   try {
-    await appwriteUpdateUserBalance(userId, newBalance);
-  } catch (bErr) {
-    console.warn('Appwrite balance deduct note:', bErr.message);
-  }
-
-  // Dual-mirror to Firebase Firestore
-  try {
-    await firebaseSaveOrder({
-      user_id: userId,
-      user_email: '',
-      product_type: 'sms_service',
-      item_name: `${service.name} (${countryCode})`,
-      reference: phoneNumber,
-      price: service.price,
-      status: 'pending',
-      details: JSON.stringify({ 
-        country: countryCode, 
-        countryName, 
-        flag, 
-        service: service.name, 
-        phoneNumber,
-        activationId,
-        rawNumber,
-        serviceCode,
-        countryId
-      })
-    });
     await firebaseUpdateUserBalance(userId, newBalance);
-  } catch (fbErr) {
-    console.warn('Firebase dual-order mirror note:', fbErr.message);
+  } catch (bErr) {
+    console.warn('Firebase balance deduct note:', bErr.message);
   }
 
   // Update local session
@@ -376,7 +319,7 @@ export async function allocateNumberLine({ userId, service, country = 'us', curr
 }
 
 /**
- * Cancel and Auto-Refund an active order (supports user cancellation or timeout)
+ * Cancel and Auto-Refund an active order in Firebase (supports user cancellation or timeout)
  */
 export async function cancelAndRefundOrder({ orderId, activationId, userId, cost, currentBalance, status = 'cancelled' }) {
   // If order has an activationId with Tiger SMS, cancel activation on Tiger SMS
@@ -396,23 +339,20 @@ export async function cancelAndRefundOrder({ orderId, activationId, userId, cost
 
   const newBalance = Number((currentBalance + Number(cost)).toFixed(2));
 
-  try {
-    if (orderId && !orderId.startsWith('ord-')) {
-      await databases.updateDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.orders,
-        orderId,
-        { status }
-      );
-    }
-    await appwriteUpdateUserBalance(userId, newBalance);
+  // Update order status and refund user balance in Firebase Firestore
+  if (db) {
     try {
+      if (orderId && !orderId.startsWith('ord-')) {
+        const orderRef = doc(db, FIREBASE_COLLECTIONS.orders, orderId);
+        await updateDoc(orderRef, {
+          status,
+          updated_at: serverTimestamp()
+        });
+      }
       await firebaseUpdateUserBalance(userId, newBalance);
-    } catch (fbErr) {
-      console.warn('Firebase refund balance sync note:', fbErr.message);
+    } catch (err) {
+      console.warn('Firebase cancel order update notice:', err.message);
     }
-  } catch (err) {
-    console.warn('Cancel order update notice:', err.message);
   }
 
   try {
@@ -432,7 +372,7 @@ export async function cancelAndRefundOrder({ orderId, activationId, userId, cost
 }
 
 /**
- * Transfer funds between users in Appwrite
+ * Transfer funds between users in Google Firebase Firestore
  */
 export async function transferFunds({ senderId, recipientEmail, amount, currentBalance }) {
   if (amount <= 0 || currentBalance < amount) {
@@ -441,36 +381,40 @@ export async function transferFunds({ senderId, recipientEmail, amount, currentB
 
   const cleanRecipientEmail = recipientEmail.trim().toLowerCase();
 
-  try {
-    // Look up recipient in Appwrite user_profiles
-    const res = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.user_profiles,
-      [Query.equal('email', cleanRecipientEmail), Query.limit(1)]
-    );
+  if (!db) {
+    throw new Error('Database connection is not available.');
+  }
 
-    if (res.documents.length === 0) {
+  try {
+    // Look up recipient in Firestore user_profiles
+    const colRef = collection(db, FIREBASE_COLLECTIONS.user_profiles);
+    const q = query(colRef, where('email', '==', cleanRecipientEmail), limit(1));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
       throw new Error(`Recipient user "${recipientEmail}" was not found. Please verify the email.`);
     }
 
-    const recipient = res.documents[0];
-    if (recipient.user_id === senderId) {
+    const recipientDoc = snap.docs[0];
+    const recipientData = recipientDoc.data();
+    const recipientUserId = recipientData.user_id || recipientDoc.id;
+
+    if (recipientUserId === senderId) {
       throw new Error('You cannot transfer funds to yourself.');
     }
 
     const newSenderBalance = Number((currentBalance - amount).toFixed(2));
-    const newRecipientBalance = Number(((Number(recipient.balance) || 0) + amount).toFixed(2));
+    const newRecipientBalance = Number(((Number(recipientData.balance) || 0) + amount).toFixed(2));
 
-    // Update sender balance
-    await appwriteUpdateUserBalance(senderId, newSenderBalance);
+    // Update sender balance in Firestore
+    await firebaseUpdateUserBalance(senderId, newSenderBalance);
 
-    // Update recipient balance
-    await databases.updateDocument(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.user_profiles,
-      recipient.$id,
-      { balance: newRecipientBalance }
-    );
+    // Update recipient balance in Firestore
+    const recipientRef = doc(db, FIREBASE_COLLECTIONS.user_profiles, recipientDoc.id);
+    await setDoc(recipientRef, {
+      balance: newRecipientBalance,
+      updated_at: serverTimestamp()
+    }, { merge: true });
 
     try {
       const raw = localStorage.getItem('cs_user');
@@ -481,10 +425,14 @@ export async function transferFunds({ senderId, recipientEmail, amount, currentB
       }
     } catch {}
 
+    try {
+      window.dispatchEvent(new CustomEvent('balance-updated', { detail: { balance: newSenderBalance } }));
+    } catch {}
+
     return {
       success: true,
       newBalance: newSenderBalance,
-      recipientEmail: recipient.email
+      recipientEmail: recipientData.email || cleanRecipientEmail
     };
   } catch (err) {
     throw err;
@@ -492,21 +440,21 @@ export async function transferFunds({ senderId, recipientEmail, amount, currentB
 }
 
 /**
- * ADMIN: Fetch all registered users from Appwrite user_profiles
+ * ADMIN: Fetch all registered users from Firebase Firestore
  */
 export async function adminGetAllUsers() {
-  return await appwriteGetAllUsers();
+  return await firebaseGetAllUsers();
 }
 
 /**
- * ADMIN: Update a user's balance in Appwrite user_profiles
+ * ADMIN: Update a user's balance in Firebase Firestore
  */
 export async function adminUpdateUserBalance(userId, newBalance) {
-  return await appwriteUpdateUserBalance(userId, newBalance);
+  return await firebaseUpdateUserBalance(userId, newBalance);
 }
 
 // ==========================================================================
-// SETTINGS & PROFILE SECURITY OTP SERVICES (APPWRITE SYNCHRONIZED)
+// SETTINGS & PROFILE SECURITY OTP SERVICES (FIREBASE SYNCHRONIZED)
 // ==========================================================================
 
 const OTP_STORE_KEY = 'cs_pending_otps';
@@ -583,7 +531,7 @@ export async function requestWhatsAppOtp(userId, newPhoneNumber) {
 }
 
 /**
- * 2. Verify WhatsApp OTP and update user profile in Appwrite
+ * 2. Verify WhatsApp OTP and update user profile in Firebase
  */
 export async function verifyWhatsAppOtp(userId, newPhoneNumber, submittedCode) {
   const key = `phone_${userId || 'current'}`;
@@ -598,13 +546,13 @@ export async function verifyWhatsAppOtp(userId, newPhoneNumber, submittedCode) {
     throw new Error('Invalid verification code. Please check the code and try again.');
   }
 
-  // Update Appwrite user_profiles
+  // Update Firebase user_profiles
   try {
-    await appwriteUpdateProfile(userId, {
+    await firebaseUpdateProfile(userId, {
       contact_info: newPhoneNumber
     });
   } catch (err) {
-    console.warn('Appwrite profile contact update warning:', err.message);
+    console.warn('Firebase profile contact update warning:', err.message);
   }
 
   // Update local session storage
@@ -643,7 +591,7 @@ export async function requestEmailOtp(userId, newEmail) {
 }
 
 /**
- * 4. Verify Email OTP and update email in Appwrite
+ * 4. Verify Email OTP and update email in Firebase
  */
 export async function verifyEmailOtp(userId, newEmail, submittedCode) {
   const key = `email_${userId || 'current'}`;
@@ -658,13 +606,13 @@ export async function verifyEmailOtp(userId, newEmail, submittedCode) {
     throw new Error('Invalid verification code. Please check the code and try again.');
   }
 
-  // Update Appwrite user_profiles
+  // Update Firebase user_profiles
   try {
-    await appwriteUpdateProfile(userId, {
+    await firebaseUpdateProfile(userId, {
       email: newEmail
     });
   } catch (err) {
-    console.warn('Appwrite profile email update warning:', err.message);
+    console.warn('Firebase profile email update warning:', err.message);
   }
 
   // Update local session storage
@@ -682,12 +630,12 @@ export async function verifyEmailOtp(userId, newEmail, submittedCode) {
 }
 
 /**
- * 5. Update user password via Appwrite
+ * 5. Update user password via Firebase Auth
  */
 export async function updateUserPassword(email, currentPassword, newPassword) {
   if (!newPassword || newPassword.length < 8) {
     throw new Error('New password must be at least 8 characters long.');
   }
 
-  return await appwriteUpdatePassword(newPassword, currentPassword);
+  return await firebaseUpdatePassword(newPassword, currentPassword);
 }

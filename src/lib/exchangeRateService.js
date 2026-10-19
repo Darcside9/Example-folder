@@ -1,11 +1,18 @@
 // ==========================================================================
 // CHRIS SHOPPER — GLOBAL DOLLAR EXCHANGE RATE SERVICE (USD TO NGN)
 // Stores and synchronizes the site-wide USD-to-NGN conversion rate
-// between Appwrite Cloud, localStorage, and React state.
+// between Google Firebase Firestore, localStorage, and React state.
 // ==========================================================================
 
-import { APPWRITE_CONFIG, databases, Query, ID, client } from './appwrite';
-import { firebaseUpdatePricing } from './firebaseDb';
+import { 
+  db, 
+  FIREBASE_COLLECTIONS,
+  doc, 
+  getDoc, 
+  setDoc, 
+  onSnapshot, 
+  serverTimestamp 
+} from './firebase';
 
 export const DEFAULT_DOLLAR_RATE = 1600;
 const STORAGE_KEY = 'cs_usd_to_ngn_rate';
@@ -29,18 +36,18 @@ export function getStoredDollarRate() {
 }
 
 /**
- * Fetch latest dollar exchange rate from Appwrite Cloud DB
+ * Fetch latest dollar exchange rate from Google Firebase Firestore
  */
 export async function fetchLiveDollarRate() {
-  try {
-    const res = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.products_pricing,
-      [Query.equal('product_id', SETTING_PRODUCT_ID), Query.limit(1)]
-    );
+  if (!db) return getStoredDollarRate();
 
-    if (res.documents.length > 0) {
-      const rate = Number(res.documents[0].price_usd);
+  try {
+    const docRef = doc(db, FIREBASE_COLLECTIONS.products_pricing, SETTING_PRODUCT_ID);
+    const snap = await getDoc(docRef);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      const rate = Number(data.price_usd);
       if (!isNaN(rate) && rate > 0) {
         try {
           localStorage.setItem(STORAGE_KEY, String(rate));
@@ -53,13 +60,13 @@ export async function fetchLiveDollarRate() {
 
     return getStoredDollarRate();
   } catch (err) {
-    console.warn('Appwrite exchange rate fetch fallback:', err.message);
+    console.warn('Firebase exchange rate fetch fallback:', err.message);
     return getStoredDollarRate();
   }
 }
 
 /**
- * Admin updates dollar exchange rate in Appwrite Cloud DB and broadcasts site-wide
+ * Admin updates dollar exchange rate in Google Firebase Firestore and broadcasts site-wide
  */
 export async function saveDollarRate(newRate) {
   const numericRate = parseFloat(newRate);
@@ -68,44 +75,18 @@ export async function saveDollarRate(newRate) {
   }
 
   try {
-    // Check if doc exists
-    const query = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.products_pricing,
-      [Query.equal('product_id', SETTING_PRODUCT_ID), Query.limit(1)]
-    );
-
-    const payload = {
-      product_id: SETTING_PRODUCT_ID,
-      name: 'USD to NGN Dollar Exchange Rate',
-      product_type: 'system_setting',
-      category: 'currency',
-      price_usd: numericRate,
-      is_active: true,
-      carrier_speed: 'site_wide'
-    };
-
-    if (query.documents.length > 0) {
-      await databases.updateDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.products_pricing,
-        query.documents[0].$id,
-        payload
-      );
-    } else {
-      await databases.createDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.products_pricing,
-        ID.unique(),
-        payload
-      );
-    }
-
-    // Dual-write to Firebase Firestore
-    try {
-      await firebaseUpdatePricing(SETTING_PRODUCT_ID, numericRate);
-    } catch (fbErr) {
-      console.warn('Firebase exchange rate dual-update notice:', fbErr.message);
+    if (db) {
+      const docRef = doc(db, FIREBASE_COLLECTIONS.products_pricing, SETTING_PRODUCT_ID);
+      await setDoc(docRef, {
+        product_id: SETTING_PRODUCT_ID,
+        name: 'USD to NGN Dollar Exchange Rate',
+        product_type: 'system_setting',
+        category: 'currency',
+        price_usd: numericRate,
+        is_active: true,
+        carrier_speed: 'site_wide',
+        updated_at: serverTimestamp()
+      }, { merge: true });
     }
 
     // Update local cache
@@ -122,7 +103,7 @@ export async function saveDollarRate(newRate) {
 
     return { success: true, rate: numericRate };
   } catch (err) {
-    console.error('Failed to save dollar exchange rate to Appwrite:', err);
+    console.error('Failed to save dollar exchange rate to Firebase:', err);
     // Still save to localStorage so the admin can continue working
     try {
       localStorage.setItem(STORAGE_KEY, String(numericRate));
@@ -137,7 +118,7 @@ export async function saveDollarRate(newRate) {
 }
 
 /**
- * Subscribe to site-wide dollar rate updates (window event & Appwrite Realtime)
+ * Subscribe to site-wide dollar rate updates (window event & Firebase Firestore Realtime)
  */
 export function subscribeToDollarRate(callback) {
   if (typeof window === 'undefined') return () => {};
@@ -150,26 +131,29 @@ export function subscribeToDollarRate(callback) {
 
   window.addEventListener(EVENT_NAME, handleCustomEvent);
 
-  // Appwrite Realtime listener
+  // Firebase Realtime onSnapshot listener
   let unsubscribeRealtime = () => {};
-  try {
-    const channel = `databases.${APPWRITE_CONFIG.databaseId}.collections.${APPWRITE_CONFIG.collections.products_pricing}.documents`;
-    unsubscribeRealtime = client.subscribe(channel, (event) => {
-      const doc = event.payload;
-      if (doc && doc.product_id === SETTING_PRODUCT_ID) {
-        const rate = Number(doc.price_usd);
-        if (!isNaN(rate) && rate > 0) {
-          try {
-            localStorage.setItem(STORAGE_KEY, String(rate));
-          } catch {
-            // Ignore
+  if (db) {
+    try {
+      const docRef = doc(db, FIREBASE_COLLECTIONS.products_pricing, SETTING_PRODUCT_ID);
+      unsubscribeRealtime = onSnapshot(docRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const rate = Number(docSnap.data()?.price_usd);
+          if (!isNaN(rate) && rate > 0) {
+            try {
+              localStorage.setItem(STORAGE_KEY, String(rate));
+            } catch {
+              // Ignore
+            }
+            callback(rate);
           }
-          callback(rate);
         }
-      }
-    });
-  } catch {
-    // Ignore realtime setup errors
+      }, (err) => {
+        console.warn('Realtime dollar rate listener warning:', err.message);
+      });
+    } catch (err) {
+      console.warn('Unable to attach Firestore dollar rate listener:', err.message);
+    }
   }
 
   return () => {

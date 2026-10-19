@@ -1,11 +1,11 @@
 // ==========================================================================
-// CHRIS SHOPPER — SECURE LOGS SERVICE (APPWRITE CLOUD & SERVERLESS DISPENSER)
+// CHRIS SHOPPER — SECURE LOGS SERVICE (GOOGLE FIREBASE FIRESTORE DISPENSER)
 // Zero-trust inventory fetching, sanitized username browsing, atomic dispense,
 // and 30-day credential retention lifecycle.
 // ==========================================================================
 
 import { siteConfig } from '../data/siteConfig.js';
-import { fetchAvailableAccountLogs } from './appwriteDispenser.js';
+import { fetchAvailableAccountLogs } from './firebaseDispenser.js';
 
 export {
   getPurchasedLogs,
@@ -18,7 +18,7 @@ export {
   LOG_EXPIRY_DAYS,
   LOG_EXPIRY_MS,
   adminBulkImportLogs
-} from './appwriteDispenser';
+} from './firebaseDispenser';
 
 const CLAIMED_STORAGE_KEY = 'cs_claimed_logs';
 

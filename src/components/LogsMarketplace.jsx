@@ -112,7 +112,7 @@ export default function LogsMarketplace({
     saveCart([]);
   };
 
-  // Fetch sanitized inventory catalog from Appwrite Cloud & Dispenser
+  // Fetch sanitized inventory catalog from Google Firebase Firestore & Dispenser
   const loadInventory = async () => {
     setLoading(true);
     try {
@@ -120,7 +120,7 @@ export default function LogsMarketplace({
       setCategories(catalog);
     } catch (err) {
       console.error('Error loading logs catalog:', err);
-      if (onShowToast) onShowToast('Failed to sync live Appwrite inventory.');
+      if (onShowToast) onShowToast('Failed to sync live Firebase inventory.');
     } finally {
       setLoading(false);
     }

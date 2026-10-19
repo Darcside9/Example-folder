@@ -1,9 +1,10 @@
 // ==========================================================================
-// CHRIS SHOPPER — DYNAMIC REAL-TIME PRICING SERVICE (APPWRITE CLOUD)
+// CHRIS SHOPPER — DYNAMIC REAL-TIME PRICING SERVICE (GOOGLE FIREBASE FIRESTORE)
 // Manages live pricing for SMS carrier services and account log products.
+// High-availability, zero-pause cloud infrastructure.
 // ==========================================================================
 
-import { APPWRITE_CONFIG, client, databases, Query, ID } from './appwrite';
+import { db, collection, doc, setDoc, onSnapshot } from './firebase';
 import { firebaseFetchPricing, firebaseUpdatePricing } from './firebaseDb';
 
 export const DEFAULT_PRODUCT_PRICING = [
@@ -25,173 +26,93 @@ export const DEFAULT_PRODUCT_PRICING = [
 ];
 
 /**
- * Fetch live pricing catalog from Appwrite Cloud DB (with automated Firebase Firestore failover)
+ * Fetch live pricing catalog from Google Firebase Firestore
  */
 export async function fetchLivePricing() {
   try {
-    const res = await databases.listDocuments(
-      APPWRITE_CONFIG.databaseId,
-      APPWRITE_CONFIG.collections.products_pricing,
-      [Query.limit(100)]
-    );
-
-    if (res.documents.length === 0) {
-      // Initialize default products if collection is fresh
-      return await seedDefaultPricing();
+    const docs = await firebaseFetchPricing();
+    if (Array.isArray(docs) && docs.length > 0) {
+      return docs;
     }
-
-    // Cache dollar exchange rate if present in pricing collection
-    const rateDoc = res.documents.find(d => d.product_id === 'usd_exchange_rate');
-    if (rateDoc && !isNaN(Number(rateDoc.price_usd))) {
-      try {
-        localStorage.setItem('cs_usd_to_ngn_rate', String(rateDoc.price_usd));
-      } catch {
-        // Ignore
-      }
-    }
-
-    // Filter out internal system settings so only actual products are returned
-    return res.documents
-      .filter(d => d.product_type !== 'system_setting')
-      .map(d => ({
-        $id: d.$id,
-        product_id: d.product_id,
-        name: d.name,
-        category: d.category,
-        product_type: d.product_type,
-        price_usd: Number(d.price_usd),
-        is_active: d.is_active,
-        carrier_speed: d.carrier_speed
-      }));
+    return DEFAULT_PRODUCT_PRICING;
   } catch (err) {
-    console.warn('Appwrite pricing read notice. Testing Firebase failover...', err.message);
-    try {
-      const fbDocs = await firebaseFetchPricing();
-      if (Array.isArray(fbDocs) && fbDocs.length > 0) {
-        console.log('✅ Loaded live pricing from Firebase Firestore failover successfully!');
-        return fbDocs;
-      }
-    } catch (fbErr) {
-      console.warn('Firebase failover note:', fbErr.message);
-    }
+    console.warn('Firebase pricing fetch note, using defaults:', err.message);
     return DEFAULT_PRODUCT_PRICING;
   }
 }
 
 /**
- * Seeds default products into products_pricing collection if empty
- */
-async function seedDefaultPricing() {
-  const seeded = [];
-  for (const item of DEFAULT_PRODUCT_PRICING) {
-    try {
-      const doc = await databases.createDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.products_pricing,
-        ID.unique(),
-        item
-      );
-      seeded.push({ ...item, $id: doc.$id });
-    } catch {
-      seeded.push(item);
-    }
-  }
-  return seeded;
-}
-
-/**
- * Update product price or status in Appwrite
+ * Update product price or status in Firebase Firestore
  */
 export async function adminUpdateProductPrice(docIdOrProductId, updates) {
   try {
-    // Check if passed string is a document ID
-    let targetDocId = docIdOrProductId;
-    let existingDoc = null;
-    
-    // If passed a product_id (e.g. 'ca_whatsapp'), look up document
-    if (!targetDocId.startsWith('6') || targetDocId.length < 15) {
-      const query = await databases.listDocuments(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.products_pricing,
-        [Query.equal('product_id', docIdOrProductId), Query.limit(1)]
-      );
-      if (query.documents[0]) {
-        targetDocId = query.documents[0].$id;
-        existingDoc = query.documents[0];
-      }
+    const productId = docIdOrProductId;
+    const priceUsd = Number(updates.price_usd !== undefined ? updates.price_usd : 1000);
+
+    if (db) {
+      const docRef = doc(db, 'products_pricing', productId);
+      await setDoc(docRef, {
+        product_id: productId,
+        name: updates.name || productId,
+        category: updates.category || 'messaging',
+        product_type: updates.product_type || 'sms_service',
+        price_usd: priceUsd,
+        is_active: updates.is_active !== undefined ? Boolean(updates.is_active) : true,
+        carrier_speed: updates.carrier_speed || '< 3s',
+        updated_at: new Date().toISOString()
+      }, { merge: true });
     }
 
-    const payload = {};
-    if (updates.price_usd !== undefined) payload.price_usd = Number(updates.price_usd);
-    if (updates.is_active !== undefined) payload.is_active = Boolean(updates.is_active);
-    if (updates.carrier_speed !== undefined) payload.carrier_speed = updates.carrier_speed;
-
-    if (existingDoc || (targetDocId.startsWith('6') && targetDocId.length >= 15)) {
-      const updated = await databases.updateDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.products_pricing,
-        targetDocId,
-        payload
-      );
-      // Dual-sync to Firebase Firestore
-      if (updates.price_usd !== undefined) {
-        try {
-          await firebaseUpdatePricing(existingDoc?.product_id || docIdOrProductId, updates.price_usd);
-        } catch (fbErr) {
-          console.warn('Firebase pricing dual-update notice:', fbErr.message);
-        }
-      }
-      return { success: true, updated };
-    } else {
-      // Create new document in products_pricing if not present yet
-      const created = await databases.createDocument(
-        APPWRITE_CONFIG.databaseId,
-        APPWRITE_CONFIG.collections.products_pricing,
-        ID.unique(),
-        {
-          product_id: docIdOrProductId,
-          name: updates.name || docIdOrProductId,
-          category: updates.category || 'messaging',
-          product_type: updates.product_type || 'sms_service',
-          price_usd: Number(updates.price_usd || 1000),
-          is_active: updates.is_active !== undefined ? Boolean(updates.is_active) : true,
-          carrier_speed: updates.carrier_speed || '< 3s'
-        }
-      );
-      // Dual-sync to Firebase Firestore
-      if (updates.price_usd !== undefined) {
-        try {
-          await firebaseUpdatePricing(docIdOrProductId, updates.price_usd);
-        } catch (fbErr) {
-          console.warn('Firebase pricing dual-create notice:', fbErr.message);
-        }
-      }
-      return { success: true, updated: created };
-    }
+    return { 
+      success: true, 
+      updated: {
+        product_id: productId,
+        price_usd: priceUsd
+      } 
+    };
   } catch (err) {
-    console.error('Error updating product price in Appwrite:', err);
+    console.error('Error updating product price in Firestore:', err);
     throw err;
   }
 }
 
 /**
- * Subscribe to real-time price updates across the site
+ * Subscribe to real-time price updates across the site using Firestore snapshot listener
  */
 export function subscribeToPricingUpdates(callback) {
+  if (!db) return () => {};
+
   try {
-    const channel = `databases.${APPWRITE_CONFIG.databaseId}.collections.${APPWRITE_CONFIG.collections.products_pricing}.documents`;
-    return client.subscribe(channel, async () => {
+    const colRef = collection(db, 'products_pricing');
+    const unsubscribe = onSnapshot(colRef, (snapshot) => {
       try {
-        const fresh = await fetchLivePricing();
+        const fresh = snapshot.docs
+          .map(d => ({ $id: d.id, ...d.data() }))
+          .filter(d => d.product_type !== 'system_setting')
+          .map(d => ({
+            $id: d.$id,
+            product_id: d.product_id,
+            name: d.name,
+            category: d.category,
+            product_type: d.product_type,
+            price_usd: Number(d.price_usd),
+            is_active: d.is_active !== false,
+            carrier_speed: d.carrier_speed || '< 4s'
+          }));
+
         if (callback && Array.isArray(fresh)) {
           callback(fresh);
         }
       } catch (err) {
-        console.warn('Failed to refresh pricing on subscription event:', err);
+        console.warn('Failed to parse pricing update on snapshot:', err);
       }
+    }, (error) => {
+      console.warn('Firestore pricing snapshot error:', error.message);
     });
+
+    return unsubscribe;
   } catch (err) {
-    console.warn('Realtime subscription not supported in current environment:', err);
+    console.warn('Realtime subscription not supported:', err);
     return () => {};
   }
 }
