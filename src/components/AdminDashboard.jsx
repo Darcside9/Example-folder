@@ -2616,7 +2616,7 @@ export default function AdminDashboard({ onShowToast }) {
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', fontWeight: 600 }}
             >
               <span style={{ fontSize: '1.25rem' }}>🇺🇸</span>
-              <span>United States (+1)</span>
+              <span>United States</span>
               <span className="badge-pill" style={{ background: selectedNumberCountry === 'US' ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.72rem' }}>
                 25 Services
               </span>
@@ -2628,7 +2628,7 @@ export default function AdminDashboard({ onShowToast }) {
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', fontWeight: 600 }}
             >
               <span style={{ fontSize: '1.25rem' }}>🇨🇦</span>
-              <span>Canada (+1)</span>
+              <span>Canada</span>
               <span className="badge-pill" style={{ background: selectedNumberCountry === 'CA' ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.72rem' }}>
                 25 Services
               </span>
@@ -2640,7 +2640,7 @@ export default function AdminDashboard({ onShowToast }) {
               style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 18px', borderRadius: '10px', fontWeight: 600 }}
             >
               <span style={{ fontSize: '1.25rem' }}>🇬🇧</span>
-              <span>United Kingdom (+44)</span>
+              <span>United Kingdom</span>
               <span className="badge-pill" style={{ background: selectedNumberCountry === 'UK' ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.1)', padding: '2px 8px', borderRadius: '12px', fontSize: '0.72rem' }}>
                 25 Services
               </span>
@@ -2665,7 +2665,7 @@ export default function AdminDashboard({ onShowToast }) {
               </div>
               <div className="tiger-stat-pill active">
                 <span>{selectedNumberCountry === 'UK' ? '🇬🇧 Region:' : (selectedNumberCountry === 'CA' ? '🇨🇦 Region:' : '🇺🇸 Region:')}</span>
-                <strong>{selectedNumberCountry === 'UK' ? 'UK (+44) Physical SIMs' : (selectedNumberCountry === 'CA' ? 'Canada (+1) Physical SIMs' : 'USA (+1) Physical SIMs')}</strong>
+                <strong>{selectedNumberCountry === 'UK' ? 'UK Physical SIMs' : (selectedNumberCountry === 'CA' ? 'Canada Physical SIMs' : 'USA Physical SIMs')}</strong>
               </div>
               <button 
                 type="button" 
@@ -2814,7 +2814,7 @@ export default function AdminDashboard({ onShowToast }) {
             <div className="dash-table-header">
               <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '16px', width: '100%' }}>
                 <div>
-                  <h3>📱 {selectedNumberCountry === 'UK' ? 'United Kingdom (+44)' : (selectedNumberCountry === 'CA' ? 'Canada (+1)' : 'USA (+1)')} Verification Platforms &amp; Marketplace Dispenser (25 Services)</h3>
+                  <h3>📱 {selectedNumberCountry === 'UK' ? 'United Kingdom' : (selectedNumberCountry === 'CA' ? 'Canada' : 'USA')} Verification Platforms &amp; Marketplace Dispenser (25 Services)</h3>
                   <p>
                     Default wholesale prices come directly from Tiger SMS API in USD for {selectedNumberCountry === 'UK' ? 'United Kingdom (country ID 16)' : (selectedNumberCountry === 'CA' ? 'Canada (country ID 36)' : 'USA (country ID 187)')}. Final price in Naira is what is dispensed to the public marketplace.
                   </p>

@@ -145,7 +145,7 @@ export default function PricingCatalog({ onSelectPlan, onNotifySoon }) {
               <span className="usa-banner-flag">🇺🇸</span>
               <div className="usa-banner-text">
                 <div className="usa-banner-title-row">
-                  <h4>United States (+1) Carrier Numbers</h4>
+                  <h4>United States Carrier Numbers</h4>
                   <span className="usa-banner-live-pill">
                     <span className="pulse-dot"></span>
                     25 Platforms Active Now

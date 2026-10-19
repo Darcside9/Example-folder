@@ -15,7 +15,7 @@ export default function SmsCountry3DSelector({
   const countriesList = [
     {
       code: 'US',
-      name: 'United States Carrier Lines (+1)',
+      name: 'United States Carrier Lines',
       shortName: 'United States',
       dialCode: '+1',
       flag: '🇺🇸',
@@ -27,7 +27,7 @@ export default function SmsCountry3DSelector({
     },
     {
       code: 'CA',
-      name: 'Canada Carrier Lines (+1)',
+      name: 'Canada Carrier Lines',
       shortName: 'Canada',
       dialCode: '+1',
       flag: '🇨🇦',
@@ -39,7 +39,7 @@ export default function SmsCountry3DSelector({
     },
     {
       code: 'UK',
-      name: 'United Kingdom Carrier Lines (+44)',
+      name: 'United Kingdom Carrier Lines',
       shortName: 'United Kingdom',
       dialCode: '+44',
       flag: '🇬🇧',
